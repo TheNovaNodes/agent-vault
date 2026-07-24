@@ -107,6 +107,7 @@ type Secret struct {
 	Manual      string                 `json:"manual,omitempty"`      // markdown-инструкция
 	EndpointMap []EndpointRef          `json:"endpoint_map,omitempty"` // карта эндпоинтов
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`     // произвольные данные
+	DocURL      string                 `json:"doc_url,omitempty"`      // ссылка на внешнюдь документацию
 }
 
 // SecretToken — токен доступа к конкретному секрету
@@ -1351,6 +1352,8 @@ const (
 	stateWaitingProjectSecrets    = "waiting_project_secrets"
 	stateWaitingAddSecretName     = "waiting_add_secret_name"
 	stateWaitingReplaceSecrets    = "waiting_replace_secrets"
+	stateWaitingDocURL            = "waiting_doc_url"
+	stateWaitingExploreSecret     = "waiting_explore_secret"
 )
 
 type session struct {
@@ -1362,6 +1365,9 @@ type session struct {
 	projectSecrets    []string
 	addSecretProjectID string
 	updatedAt         time.Time
+	exploreSecretName string
+	docURL            string
+	docURLSecretName  string
 }
 
 type Bot struct {
@@ -1630,6 +1636,24 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	case strings.HasPrefix(data, "delete:"):
 		name := strings.TrimPrefix(data, "delete:")
 		b.deleteSecret(chatID, name)
+
+	case strings.HasPrefix(data, "explore:"):
+		name := strings.TrimPrefix(data, "explore:")
+		sess := b.getSession(chatID)
+		sess.exploreSecretName = name
+		sess.state = stateWaitingExploreSecret
+		sendWithMenu(b.api, chatID,
+			fmt.Sprintf("📝 <b>Исследовать секрет %s</b>\n\nВведите запрос для исследования (например: как использовать API):\n\nИли /cancel для отмены", escapeHTML(name)),
+			cancelKB())
+
+	case strings.HasPrefix(data, "docurl:"):
+		name := strings.TrimPrefix(data, "docurl:")
+		sess := b.getSession(chatID)
+		sess.docURLSecretName = name
+		sess.state = stateWaitingDocURL
+		sendWithMenu(b.api, chatID,
+			fmt.Sprintf("🔗 <b>Добавить ссылку для %s</b>\n\nВведите URL документации:\n\n<i>Пример: https://docs.example.com/api</i>\n\nили /cancel", escapeHTML(name)),
+			cancelKB())
 
 	case data == "export":
 		b.sendExport(chatID)
@@ -2263,6 +2287,48 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 				fmt.Sprintf("✅ <b>%s</b> создан!", escapeHTML(sess.name)),
 				mainMenuKB())
 		}
+
+	case stateWaitingExploreSecret:
+		manualContent := text
+		if manualContent == "" {
+			sendText(b.api, chatID, "⚠️ Содержание не может быть пустым. Попробуйте ещё раз:")
+			return
+		}
+		b.store.mu.Lock()
+		sec, ok := b.store.secrets[sess.exploreSecretName]
+		if !ok {
+			b.store.mu.Unlock()
+			sendWithMenu(b.api, chatID, "⚠️ Секрет не найден", mainMenuKB())
+			return
+		}
+		sec.Manual = manualContent
+		sec.UpdatedAt = time.Now()
+		b.store.mu.Unlock()
+		b.resetSession(chatID)
+		sendWithMenu(b.api, chatID,
+			fmt.Sprintf("✅ <b>Инструкция для %s</b> обновлена", escapeHTML(sess.exploreSecretName)),
+			mainMenuKB())
+
+	case stateWaitingDocURL:
+		docURL := text
+		if docURL == "" {
+			sendText(b.api, chatID, "⚠️ URL не может быть пустым. Попробуйте ещё раз:")
+			return
+		}
+		b.store.mu.Lock()
+		sec, ok := b.store.secrets[sess.docURLSecretName]
+		if !ok {
+			b.store.mu.Unlock()
+			sendWithMenu(b.api, chatID, "⚠️ Секрет не найден", mainMenuKB())
+			return
+		}
+		sec.DocURL = docURL
+		sec.UpdatedAt = time.Now()
+		b.store.mu.Unlock()
+		b.resetSession(chatID)
+		sendWithMenu(b.api, chatID,
+			fmt.Sprintf("✅ <b>URL для %s</b> добавлен: %s", escapeHTML(sess.docURLSecretName), escapeHTML(docURL)),
+			mainMenuKB())
 
 	default:
 		b.sendMainMenu(chatID)
