@@ -1734,6 +1734,11 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 		}
 	}
 
+	// Add DocURL to message text if exists
+	if secret.DocURL != "" {
+		text += fmt.Sprintf("\n\n🔗 Документация: %s", escapeHTML(secret.DocURL))
+	}
+
 	var rows [][]tgbotapi.InlineKeyboardButton
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("🔑 Создать токен", "token:"+name),
@@ -1743,6 +1748,18 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 			tgbotapi.NewInlineKeyboardButtonData("🚫 Отозвать все токены", "revoke:"+name),
 		))
 	}
+	// Explore/Manual button - dynamic text
+	exploreBtnText := "📝 Исследовать"
+	if secret.Manual != "" {
+		exploreBtnText = "🔄 Переисследовать"
+	}
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData(exploreBtnText, "explore:"+name),
+	))
+	// DocURL button
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("🔗 Указать Doc URL", "docurl:"+name),
+	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить секрет", "delete:"+name),
 	))
