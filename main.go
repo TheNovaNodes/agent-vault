@@ -29,14 +29,15 @@ import (
 type AuditAction string
 
 const (
-	ActionSecretSet     AuditAction = "secret.set"
-	ActionSecretGet     AuditAction = "secret.get"
-	ActionSecretDelete  AuditAction = "secret.delete"
-	ActionTokenCreate   AuditAction = "token.create"
-	ActionTokenRevoke   AuditAction = "token.revoke"
-	ActionTokenConsume  AuditAction = "token.consume"
-	ActionProjectCreate AuditAction = "project.create"
-	ActionProjectDelete AuditAction = "project.delete"
+	ActionSecretSet          AuditAction = "secret.set"
+	ActionSecretGet          AuditAction = "secret.get"
+	ActionSecretDelete       AuditAction = "secret.delete"
+	ActionSecretManualUpdate AuditAction = "secret.manual_update"
+	ActionTokenCreate        AuditAction = "token.create"
+	ActionTokenRevoke        AuditAction = "token.revoke"
+	ActionTokenConsume       AuditAction = "token.consume"
+	ActionProjectCreate      AuditAction = "project.create"
+	ActionProjectDelete      AuditAction = "project.delete"
 )
 
 type AuditEntry struct {
@@ -92,10 +93,20 @@ func (a *AuditLogger) List() []AuditEntry {
 
 // === MODELS ===
 
+type EndpointRef struct {
+	Name     string `json:"name"`      // "api-endpoint"
+	URL      string `json:"url"`       // https://api.example.com/v1
+	Method   string `json:"method"`    // GET/POST/PUT/DELETE
+	AuthType string `json:"auth_type"` // "bearer" | "query" | "header" | "none"
+}
+
 type Secret struct {
-	Name      string    `json:"name" yaml:"-"`
-	Value     string    `json:"value"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Name        string                 `json:"name" yaml:"-"`
+	Value       string                 `json:"value"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	Manual      string                 `json:"manual,omitempty"`      // markdown-инструкция
+	EndpointMap []EndpointRef          `json:"endpoint_map,omitempty"` // карта эндпоинтов
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`     // произвольные данные
 }
 
 // SecretToken — токен доступа к конкретному секрету
@@ -151,11 +162,8 @@ func NewStore(password string, audit ...*AuditLogger) *Store {
 	}
 	if password != "" {
 		s.sealed = true
-		s.sealedKey = make([]byte, 32)
-		if _, err := rand.Read(s.sealedKey); err != nil {
-			// fallback: derive from password (less secure but works without crypto/rand)
-			s.sealedKey = deriveKey(password, []byte("lab-vault-sealed-salt"))
-		}
+		// Derive key from password using Argon2id (FIXED: was rand.Read)
+		s.sealedKey = deriveKey(password, []byte("lab-vault-sealed-salt"))
 	}
 	return s
 }
@@ -641,10 +649,19 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // handleSecretByName — GET /secret/<name> — returns a single secret by name (admin token required).
 // DELETE /secret/<name> — deletes a single secret and revokes its tokens.
+// PUT /secret/<name>/manual — updates manual/endpoint_map (project token required).
 func (s *Server) handleSecretByName(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/secret/")
 	if name == "" {
 		http.Error(w, "secret name required", http.StatusBadRequest)
+		return
+	}
+
+	// Handle PUT /secret/<name>/manual
+	if strings.HasSuffix(r.URL.Path, "/manual") {
+		name = strings.TrimPrefix(name, "/")
+		name = strings.TrimSuffix(name, "/manual")
+		s.handleSecretUpdateManual(w, r, name)
 		return
 	}
 
@@ -653,6 +670,8 @@ func (s *Server) handleSecretByName(w http.ResponseWriter, r *http.Request) {
 		s.handleSecretGet(w, r, name)
 	case http.MethodDelete:
 		s.handleSecretDelete(w, r, name)
+	case http.MethodPut:
+		s.handleSecretUpdate(w, r, name)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -824,9 +843,11 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jsonResponse(w, map[string]interface{}{
-			"name":       secret.Name,
-			"value":      secret.Value,
-			"updated_at": secret.UpdatedAt,
+			"name":        secret.Name,
+			"value":       secret.Value,
+			"updated_at":  secret.UpdatedAt,
+			"manual":      secret.Manual,
+			"endpoint_map": secret.EndpointMap,
 		})
 		return
 	}
@@ -868,9 +889,11 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 		for _, sid := range secretIDs {
 			if sec, ok := s.store.Get(sid); ok {
 				result[sid] = map[string]interface{}{
-					"name":       sec.Name,
-					"value":      sec.Value,
-					"updated_at": sec.UpdatedAt,
+					"name":         sec.Name,
+					"value":        sec.Value,
+					"updated_at":   sec.UpdatedAt,
+					"manual":       sec.Manual,
+					"endpoint_map": sec.EndpointMap,
 				}
 			}
 		}
@@ -884,6 +907,115 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 	s.config.mu.Unlock()
 
 	http.Error(w, "invalid or revoked token", http.StatusForbidden)
+}
+
+// handleSecretUpdateManual обновляет manual/endpoint_map для секрета.
+// Требуется ProjectToken (валидация: токен привязан к проекту, содержащему этот секрет).
+func (s *Server) handleSecretUpdateManual(w http.ResponseWriter, r *http.Request, name string) {
+	if r.Method != http.MethodPut && r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Validate project token - агент должен использовать токен проекта
+	projectToken := r.Header.Get("X-Project-Token")
+	if projectToken == "" {
+		http.Error(w, "project token required in X-Project-Token header", http.StatusUnauthorized)
+		return
+	}
+
+	tokenHash := hashToken(projectToken)
+
+	s.config.mu.Lock()
+	pt, ok := s.config.ProjectTokens[tokenHash]
+	if !ok || pt.Revoked {
+		s.config.mu.Unlock()
+		http.Error(w, "invalid or revoked project token", http.StatusForbidden)
+		return
+	}
+
+	project, ok := s.config.Projects[pt.ProjectID]
+	if !ok {
+		s.config.mu.Unlock()
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	// Check that secret belongs to this project
+	secretInProject := false
+	for _, sid := range project.SecretIDs {
+		if sid == name {
+			secretInProject = true
+			break
+		}
+	}
+	if !secretInProject {
+		s.config.mu.Unlock()
+		http.Error(w, "secret not in project", http.StatusForbidden)
+		return
+	}
+	s.config.mu.Unlock()
+
+	var req struct {
+		Manual      string       `json:"manual"`
+		EndpointMap []EndpointRef `json:"endpoint_map"`
+		Metadata    map[string]interface{} `json:"metadata"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Update secret in store
+	s.store.mu.Lock()
+	sec, ok := s.store.secrets[name]
+	if !ok {
+		s.store.mu.Unlock()
+		http.Error(w, "secret not found", http.StatusNotFound)
+		return
+	}
+	if req.Manual != "" {
+		sec.Manual = req.Manual
+	}
+	if req.EndpointMap != nil {
+		sec.EndpointMap = req.EndpointMap
+	}
+	if req.Metadata != nil {
+		sec.Metadata = req.Metadata
+	}
+	s.store.mu.Unlock()
+
+	if s.config.AuditLog != nil {
+		s.config.AuditLog.Log(ActionSecretManualUpdate, name, "api", "project="+project.ID)
+	}
+
+	jsonResponse(w, map[string]interface{}{
+		"status":  "updated",
+		"name":    name,
+		"manual":  sec.Manual,
+		"updated": time.Now().Format(time.RFC3339),
+	})
+}
+
+func (s *Server) handleSecretUpdate(w http.ResponseWriter, r *http.Request, name string) {
+	if !s.isAdmin(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Value == "" {
+		http.Error(w, "value required", http.StatusBadRequest)
+		return
+	}
+
+	s.store.Set(name, req.Value)
+	if s.config.AuditLog != nil {
+		s.config.AuditLog.Log(ActionSecretSet, name, "api", "PUT /secret/"+name)
+	}
+	jsonResponse(w, map[string]string{"status": "updated", "name": name})
 }
 
 // === PROJECT HANDLERS ===
@@ -1553,6 +1685,27 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 		escapeHTML(secret.Value),
 		escapeHTML(secret.UpdatedAt.Format("02.01.2006 15:04")),
 		tokenCount)
+
+	// Add manual preview if exists
+	if secret.Manual != "" {
+		manualPreview := secret.Manual
+		if len(manualPreview) > 200 {
+			manualPreview = manualPreview[:200] + "..."
+		}
+		text += fmt.Sprintf("\n\n📖 Инструкция:\n%s", escapeHTML(manualPreview))
+	}
+
+	// Add endpoint map preview if exists
+	if len(secret.EndpointMap) > 0 {
+		text += fmt.Sprintf("\n\n🔌 Эндпоинты: %d", len(secret.EndpointMap))
+		for i, ep := range secret.EndpointMap {
+			if i >= 3 {
+				text += fmt.Sprintf("\n   … и ещё %d", len(secret.EndpointMap)-3)
+				break
+			}
+			text += fmt.Sprintf("\n   • %s (%s)", escapeHTML(ep.Name), escapeHTML(ep.Method))
+		}
+	}
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
