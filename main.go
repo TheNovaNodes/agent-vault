@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"net/url"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -2312,32 +2311,9 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			sendText(b.api, chatID, "⚠️ Запрос не может быть пустым. Попробуйте ещё раз:")
 			return
 		}
-		// Perform web search via SearXNG
-		searchURL := "http://127.0.0.1:8889/search?q=" + url.QueryEscape(query) + "&safesearch=0&format=json"
-		resp, err := http.Get(searchURL)
-		var manualContent string
-		if err != nil {
-			log.Printf("[bot] explore search error: %v", err)
-			manualContent = fmt.Sprintf("# Research: %s\n\nSearch error. Query: %s", sess.exploreSecretName, query)
-		} else {
-			defer resp.Body.Close()
-			var searchResp struct {
-				Results []struct {
-					URL     string `json:"url"`
-					Title   string `json:"title"`
-					Content string `json:"content"`
-				} `json:"results"`
-			}
-			if json.NewDecoder(resp.Body).Decode(&searchResp) == nil {
-				manualContent = fmt.Sprintf("# Research: %s\n\n", sess.exploreSecretName)
-				for i, r := range searchResp.Results {
-					if i >= 3 { break }
-					prev := r.Content
-					if len(prev) > 150 { prev = prev[:150] + "..." }
-					manualContent += fmt.Sprintf("## %s\n%s\n\n%s\n\n---\n\n", r.Title, prev, r.URL)
-				}
-			}
-		}
+		// Generate research prompt for manual update
+		manualContent := fmt.Sprintf("# Research Guide: %s\n\n## Query: %s\n\nPlease investigate and provide:\n1. Key endpoints with methods/params\n2. Authentication requirements\n3. Usage patterns and code examples\n4. Rate limits and quotas\n\n## Research Notes\n\n<!-- Fill after investigation -->",
+			sess.exploreSecretName, query)
 		b.store.mu.Lock()
 		sec, ok := b.store.secrets[sess.exploreSecretName]
 		if !ok {
@@ -2350,7 +2326,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		b.store.mu.Unlock()
 		b.resetSession(chatID)
 		sendWithMenu(b.api, chatID,
-			fmt.Sprintf("✅ <b>Инструкция для %s</b> обновлена", escapeHTML(sess.exploreSecretName)),
+			fmt.Sprintf("✅ <b>Инструкция для %s</b> подготовлена для заполнения", escapeHTML(sess.exploreSecretName)),
 			mainMenuKB())
 
 	case stateWaitingDocURL:
@@ -2359,32 +2335,9 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			sendText(b.api, chatID, "⚠️ URL не может быть пустым. Попробуйте ещё раз:")
 			return
 		}
-		// Perform web research on the URL via SearXNG
-		searchURL := "http://127.0.0.1:8889/search?q=" + url.QueryEscape(docURL) + "&safesearch=0&format=json"
-		resp, err := http.Get(searchURL)
-		var manualContent string
-		if err != nil {
-			log.Printf("[bot] docurl research error: %v", err)
-			manualContent = fmt.Sprintf("# Research: %s\n\nURL: %s\n\nResearch unavailable", sess.docURLSecretName, docURL)
-		} else {
-			defer resp.Body.Close()
-			var searchResp struct {
-				Results []struct {
-					URL     string `json:"url"`
-					Title   string `json:"title"`
-					Content string `json:"content"`
-				} `json:"results"`
-			}
-			if json.NewDecoder(resp.Body).Decode(&searchResp) == nil {
-				manualContent = fmt.Sprintf("# Research: %s\n\nSource URL: %s\n\n", sess.docURLSecretName, docURL)
-				for i, r := range searchResp.Results {
-					if i >= 3 { break }
-					prev := r.Content
-					if len(prev) > 150 { prev = prev[:150] + "..." }
-					manualContent += fmt.Sprintf("## %s\n%s\n\n%s\n\n---\n\n", r.Title, prev, r.URL)
-				}
-			}
-		}
+		// Generate research prompt based on the provided URL
+		manualContent := fmt.Sprintf("# Research Guide: %s\n\n## Source URL: %s\n\nPlease investigate and provide:\n1. API endpoints with methods/params\n2. Authentication requirements\n3. Usage patterns and code examples\n4. Rate limits and quotas\n\n## Research Notes\n\n<!-- Fill after investigation -->",
+			sess.docURLSecretName, docURL)
 		b.store.mu.Lock()
 		sec, ok := b.store.secrets[sess.docURLSecretName]
 		if !ok {
@@ -2398,7 +2351,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		b.store.mu.Unlock()
 		b.resetSession(chatID)
 		sendWithMenu(b.api, chatID,
-			fmt.Sprintf("✅ <b>Research complete</b> for %s", escapeHTML(sess.docURLSecretName)),
+			fmt.Sprintf("✅ <b>Документация для %s</b> связана, исследуйте URL: %s", escapeHTML(sess.docURLSecretName), escapeHTML(docURL)),
 			mainMenuKB())
 
 	default:
