@@ -2312,17 +2312,38 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			return
 		}
 		// Generate research prompt for manual update
-		manualContent := fmt.Sprintf("# Research Guide: %s\n\n## Query: %s\n\nPlease investigate and provide:\n1. Key endpoints with methods/params\n2. Authentication requirements\n3. Usage patterns and code examples\n4. Rate limits and quotas\n\n## Research Notes\n\n<!-- Fill after investigation -->",
-			sess.exploreSecretName, query)
+		docURL := ""
+		sec, _ := b.store.Get(sess.exploreSecretName)
+		if sec.DocURL != "" {
+			docURL = sec.DocURL
+		}
+		if docURL == "" {
+			docURL = "Найди в сети через SearXNG"
+		}
+		manualContent := fmt.Sprintf(`Привет, агент!
+
+Твоя задача — провести глубокое исследование API и составить технический Manual для работы с ключом.
+
+🔑 Секрет: %s
+🔗 Документация: %s
+
+Формат результата, который ты должен мне вернуть (в Markdown):
+1. Описание: (Что это за сервис)
+2. Аутентификация: (Как именно передавать ключ — заголовки, параметры)
+3. Основные эндпоинты: (Base URL и 2-3 главных пути)
+4. Лимиты: (Rate limits, если есть)
+
+Жду твой ответ!`,
+			sess.exploreSecretName, docURL)
 		b.store.mu.Lock()
-		sec, ok := b.store.secrets[sess.exploreSecretName]
+		secPtr, ok := b.store.secrets[sess.exploreSecretName]
 		if !ok {
 			b.store.mu.Unlock()
 			sendWithMenu(b.api, chatID, "⚠️ Секрет не найден", mainMenuKB())
 			return
 		}
-		sec.Manual = manualContent
-		sec.UpdatedAt = time.Now()
+		secPtr.Manual = manualContent
+		secPtr.UpdatedAt = time.Now()
 		b.store.mu.Unlock()
 		b.resetSession(chatID)
 		sendWithMenu(b.api, chatID,
@@ -2336,7 +2357,20 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			return
 		}
 		// Generate research prompt based on the provided URL
-		manualContent := fmt.Sprintf("# Research Guide: %s\n\n## Source URL: %s\n\nPlease investigate and provide:\n1. API endpoints with methods/params\n2. Authentication requirements\n3. Usage patterns and code examples\n4. Rate limits and quotas\n\n## Research Notes\n\n<!-- Fill after investigation -->",
+		manualContent := fmt.Sprintf(`Привет, агент!
+
+Твоя задача — провести глубокое исследование API и составить технический Manual для работы с ключом.
+
+🔑 Секрет: %s
+🔗 Документация: %s
+
+Формат результата, который ты должен мне вернуть (в Markdown):
+1. Описание: (Что это за сервис)
+2. Аутентификация: (Как именно передавать ключ — заголовки, параметры)
+3. Основные эндпоинты: (Base URL и 2-3 главных пути)
+4. Лимиты: (Rate limits, если есть)
+
+Жду твой ответ!`,
 			sess.docURLSecretName, docURL)
 		b.store.mu.Lock()
 		sec, ok := b.store.secrets[sess.docURLSecretName]
