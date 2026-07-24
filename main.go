@@ -248,9 +248,12 @@ func (s *Store) Get(name string) (Secret, bool) {
 	}
 	// Return a copy to prevent mutation of internal state
 	result := Secret{
-		Name:      sec.Name,
-		Value:     value,
-		UpdatedAt: sec.UpdatedAt,
+		Name:        sec.Name,
+		Value:       value,
+		UpdatedAt:   sec.UpdatedAt,
+		Manual:      sec.Manual,
+		EndpointMap: sec.EndpointMap,
+		Metadata:    sec.Metadata,
 	}
 	if s.audit != nil {
 		s.audit.Log(ActionSecretGet, name, "store", "")
