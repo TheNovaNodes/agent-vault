@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/url"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -2306,10 +2307,36 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		}
 
 	case stateWaitingExploreSecret:
-		manualContent := text
-		if manualContent == "" {
-			sendText(b.api, chatID, "⚠️ Содержание не может быть пустым. Попробуйте ещё раз:")
+		query := text
+		if query == "" {
+			sendText(b.api, chatID, "⚠️ Запрос не может быть пустым. Попробуйте ещё раз:")
 			return
+		}
+		// Perform web search via SearXNG
+		searchURL := "http://127.0.0.1:8889/search?q=" + url.QueryEscape(query) + "&safesearch=0&format=json"
+		resp, err := http.Get(searchURL)
+		var manualContent string
+		if err != nil {
+			log.Printf("[bot] explore search error: %v", err)
+			manualContent = fmt.Sprintf("# Research: %s\n\nSearch error. Query: %s", sess.exploreSecretName, query)
+		} else {
+			defer resp.Body.Close()
+			var searchResp struct {
+				Results []struct {
+					URL     string `json:"url"`
+					Title   string `json:"title"`
+					Content string `json:"content"`
+				} `json:"results"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&searchResp) == nil {
+				manualContent = fmt.Sprintf("# Research: %s\n\n", sess.exploreSecretName)
+				for i, r := range searchResp.Results {
+					if i >= 3 { break }
+					prev := r.Content
+					if len(prev) > 150 { prev = prev[:150] + "..." }
+					manualContent += fmt.Sprintf("## %s\n%s\n\n%s\n\n---\n\n", r.Title, prev, r.URL)
+				}
+			}
 		}
 		b.store.mu.Lock()
 		sec, ok := b.store.secrets[sess.exploreSecretName]
@@ -2332,6 +2359,32 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			sendText(b.api, chatID, "⚠️ URL не может быть пустым. Попробуйте ещё раз:")
 			return
 		}
+		// Perform web research on the URL via SearXNG
+		searchURL := "http://127.0.0.1:8889/search?q=" + url.QueryEscape(docURL) + "&safesearch=0&format=json"
+		resp, err := http.Get(searchURL)
+		var manualContent string
+		if err != nil {
+			log.Printf("[bot] docurl research error: %v", err)
+			manualContent = fmt.Sprintf("# Research: %s\n\nURL: %s\n\nResearch unavailable", sess.docURLSecretName, docURL)
+		} else {
+			defer resp.Body.Close()
+			var searchResp struct {
+				Results []struct {
+					URL     string `json:"url"`
+					Title   string `json:"title"`
+					Content string `json:"content"`
+				} `json:"results"`
+			}
+			if json.NewDecoder(resp.Body).Decode(&searchResp) == nil {
+				manualContent = fmt.Sprintf("# Research: %s\n\nSource URL: %s\n\n", sess.docURLSecretName, docURL)
+				for i, r := range searchResp.Results {
+					if i >= 3 { break }
+					prev := r.Content
+					if len(prev) > 150 { prev = prev[:150] + "..." }
+					manualContent += fmt.Sprintf("## %s\n%s\n\n%s\n\n---\n\n", r.Title, prev, r.URL)
+				}
+			}
+		}
 		b.store.mu.Lock()
 		sec, ok := b.store.secrets[sess.docURLSecretName]
 		if !ok {
@@ -2340,11 +2393,12 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			return
 		}
 		sec.DocURL = docURL
+		sec.Manual = manualContent
 		sec.UpdatedAt = time.Now()
 		b.store.mu.Unlock()
 		b.resetSession(chatID)
 		sendWithMenu(b.api, chatID,
-			fmt.Sprintf("✅ <b>URL для %s</b> добавлен: %s", escapeHTML(sess.docURLSecretName), escapeHTML(docURL)),
+			fmt.Sprintf("✅ <b>Research complete</b> for %s", escapeHTML(sess.docURLSecretName)),
 			mainMenuKB())
 
 	default:
