@@ -454,7 +454,7 @@ TLS заявлен в конфиге (`use_tls`, `tls_cert_path`, `tls_key_path`
 
 | # | Серьёзность | Категория | Проблема | Файл:Строка |
 |---|-------------|-----------|----------|-------------|
-| 1 | 🔴 CRITICAL | Security | Секреты на диске в plain JSON (нет ChaCha20-Poly1305) | main.go:836-877 |
+| 1 | ⚪ OUTDATED | Security | ~~Секреты на диске в plain JSON (нет ChaCha20-Poly1305)~~ | main.go:836-877 | — устарело с v3.0.0, см. encryptSnapshot()
 | 2 | 🔴 CRITICAL | Security | TG бот-токен и admin-токен в git history | config.yaml (git) |
 | 3 | 🔴 CRITICAL | Security | VAULT_PASSWORD в plain text в systemd unit | /etc/systemd/system/lab-vault.service |
 | 4 | 🔴 CRITICAL | Security | Нет rate limiting на /access/:token | main.go:208 |
@@ -543,3 +543,13 @@ Lab Vault — работающий прототип с хорошей базов
 **Общая оценка: 5/10** — работает, но не готов к production без исправления критических уязвимостей.
 
 **Приоритет фикса:** Фаза 1 (критические) → Фаза 2 (архитектура) → Фаза 3 (DevOps).
+
+---
+
+## Примечание: аудит обновлён 2026-07-27
+
+Предыдущий аудит устарел. Ключевое изменение: секреты реально шифруются ChaCha20-Poly1305 + Argon2id перед записью на диск (см. `encryptSnapshot()` в main.go). Последний коммит, на который реально актуален аудит: `0fbf554`.
+
+Косметические CRITICAL из устаревшей версии:
+- CRITICAL#1 (plain JSON на диске) — устарел, в коде нет такого пути; снапшот пишется зашифрованным
+- CRITICAL#2 (токены в git history) — `config.yaml.example` не содержит реальных токенов

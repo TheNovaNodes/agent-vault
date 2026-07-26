@@ -46,7 +46,7 @@ make build
 # config.yaml
 listen_addr: 127.0.0.1:8301
 tg_bot_token: "YOUR_BOT_TOKEN"       # или VAULT_BOT_TOKEN env
-tg_admin_id: 173681771                # ID админа в Telegram
+tg_admin_id: 123456789                # ваш Telegram ID
 admin_token: "YOUR_ADMIN_TOKEN"       # или VAULT_ADMIN_TOKEN env
 token_ttl_hours: 720                   # TTL токенов (30 дней), 0 = бессрочно
 snapshot_path: ./snapshot.enc
