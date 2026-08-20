@@ -212,8 +212,8 @@ func (s *Store) Set(name, value string) {
 	now := time.Now()
 	encrypted, err := s.sealedEncrypt(value)
 	if err != nil {
-		// If seal fails, store plaintext — better than losing data
-		encrypted = value
+		log.Printf("[store] CRITICAL: seal failed for secret %s, aborting storage: %v", name, err)
+		return
 	}
 	if existing, ok := s.secrets[name]; ok {
 		existing.Value = encrypted
@@ -1376,6 +1376,11 @@ func randomToken(length int) (string, error) {
 // === CALLBACKS ===
 
 func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
+	if cb.From.ID != b.config.TGAdminID {
+		log.Printf("[bot] unauthorized callback from %d", cb.From.ID)
+		b.api.Request(tgbotapi.NewCallback(cb.ID, "Unauthorized"))
+		return
+	}
 	chatID := cb.Message.Chat.ID
 	data := cb.Data
 	if _, err := b.api.Request(tgbotapi.NewCallback(cb.ID, "")); err != nil {
