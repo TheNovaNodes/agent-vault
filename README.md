@@ -1,171 +1,130 @@
----
-description: "lab-vault — README"
-type: readme
-last_reviewed: 2026-06-21
-last_code_change: 2026-06-21
-status: active
----
-
-# 🔐 Lab Vault
-
-> **Владелец:** DoctorM&Ai | **Статус:** active | **Версия:** 3.0.0
-
-## Описание
-
-Lab Vault — безопасное хранилище секретов (API keys, пароли, токены) для AI-агентов. Секреты хранятся в RAM, на диске — только зашифрованный снапшот (ChaCha20-Poly1305). Управление через Telegram-бот с FSM-диалогом. Доступ по one-time токенам с TTL.
-
-## Описание
-
-Lab Vault — безопасное хранилище секретов (API keys, пароли, токены) для AI-агентов. Секреты хранятся в RAM, на диске — только зашифрованный снапшот (ChaCha20-Poly1305). Управление через Telegram-бот с FSM-диалогом. Доступ по one-time токенам с TTL.
-
-**Ключевые возможности:**
-- 2-шаговый FSM для создания секретов через TG-бот
-- **Проекты** — группировка секретов, управление через TG-бот
-- **Project tokens** — одноразовые токены доступа ко всем секретам проекта
-- Автоматическая генерация one-time токенов доступа с TTL
-- HTTP API для получения секретов (rate limited)
-- Экспорт секретов, killswitch
-- ChaCha20-Poly1305 + Argon2id шифрование снапшота
-- SHA-256 хеширование токенов в конфиге
-- Telegram Admin ID фильтрация
-- 90+ unit + integration тестов, race condition safe
-
-## Быстрый старт
-
-### 1. Сборка
-
-```bash
-cd /root/LabDoctorM/projects/lab-vault
-export PATH=/usr/local/go/bin:$PATH
-make build
-```
-
-### 2. Конфигурация
-
 ```yaml
-# config.yaml
-listen_addr: 127.0.0.1:8301
-tg_bot_token: "YOUR_BOT_TOKEN"       # или VAULT_BOT_TOKEN env
-tg_admin_id: 173681771                # ID админа в Telegram
-admin_token: "YOUR_ADMIN_TOKEN"       # или VAULT_ADMIN_TOKEN env
-token_ttl_hours: 720                   # TTL токенов (30 дней), 0 = бессрочно
-snapshot_path: ./snapshot.enc
+module_type: core-component
+status: active
+protocol: http
+primary_capability: secret-management
+requires: go, telegram-bot-api
+works_with: lab-vault-env, lab-vault-cli
+last_verified: 2026-08-21
 ```
 
-### 3. Запуск
+# Lab Vault (agent-vault)
+A lightweight, secure, and isolated secrets manager designed specifically for AI agents, featuring Telegram-based management, ChaCha20-Poly1305 encryption, and simple HTTP APIs.
 
+## Status and Last Verified Date
+Status: Active / Core Component
+Last Verified: 2026-08-21
+
+## What it does / does not do
+**What it does:**
+- Securely stores secrets using in-memory structures backed by ChaCha20-Poly1305 encrypted snapshots (`snapshot.enc`).
+- Provides a Telegram Bot interface for admins to manage secrets and access tokens.
+- Supports single-secret tokens and project-level tokens (groups of secrets).
+- Exposes a minimal HTTP API for agent access.
+- Provides CLI tools (`lab-vault-env`, `lab-vault-cli`) for environment-variable generation and administration.
+- Maintains a ring-buffer audit log of all access and management actions.
+
+**What it does not do:**
+- Does not claim automatic onboarding (agents must be explicitly granted tokens).
+- Does not implement an MCP server natively (acts as an HTTP service).
+- Does not support high-availability clustering or complex RBAC.
+
+## Why an agent would use it
+Agents use Lab Vault to securely retrieve credentials, API keys, or environment variables at runtime without hardcoding sensitive data into their configuration or prompts. By using `lab-vault-env`, agents can transparently inject secrets into their execution environments.
+
+## Architecture and dependencies
+**Architecture:**
+- **Store:** In-memory key-value store, periodically flushed to disk.
+- **Sealed Mode:** Data is encrypted at rest using a key derived from a password or randomly generated.
+- **Interfaces:** HTTP REST API (port 8301 by default), Telegram Bot, and CLI binaries.
+
+**Dependencies:**
+- Go 1.25.0
+- `github.com/go-telegram-bot-api/telegram-bot-api/v5`
+- `golang.org/x/crypto/chacha20poly1305`
+- `gopkg.in/yaml.v3`
+
+## Compatibility
+Fully compatible with Linux environments and can run as a standard systemd service.
+
+## Quick start and health check
+1. Build the binaries:
+   ```bash
+   make build
+   ```
+2. Create a `config.yaml` based on `config.yaml.example`.
+3. Start the server (with an optional password for sealed mode):
+   ```bash
+   VAULT_PASSWORD="my-secure-password" ./lab-vault -config config.yaml
+   ```
+4. Health check:
+   ```bash
+   curl http://127.0.0.1:8301/health
+   ```
+
+## Configuration and environment variables
+- `VAULT_PASSWORD`: Used to enable sealed mode (encryption at rest).
+- `VAULT_ADMIN_TOKEN`: Admin token for HTTP API, overrides `admin_token` in `config.yaml`.
+- `VAULT_BOT_TOKEN`: Telegram bot token, overrides `tg_bot_token` in `config.yaml`.
+- `VAULT_TOKEN`: Used by `lab-vault-env` to authenticate.
+
+*Priority: Environment Variables > config.yaml > Defaults.*
+
+## Complete MCP tool/API table with side effects
+Since Lab Vault provides an HTTP API rather than native MCP tools, here is the API table:
+
+| Endpoint | Method | Requires Auth | Side Effects | Description |
+|----------|--------|---------------|--------------|-------------|
+| `/health` | GET | None | None | Returns vault status and uptime. |
+| `/access/{token}` | GET | None (Token in URL) | Audit Log | Retrieves a single secret or all project secrets. |
+| `/secrets` | GET | Admin Token | None | Lists all secrets. |
+| `/secrets` | POST | Admin Token | State Mutation | Creates or updates a secret. |
+| `/secret/{name}` | GET | Admin Token | None | Retrieves a specific secret by name. |
+| `/secret/{name}` | DELETE | Admin Token | State Mutation | Deletes a secret and revokes its tokens. |
+| `/export` | GET | Admin Token | None | Exports all secrets. |
+| `/projects` | GET, POST | Admin Token | State Mutation | Lists or creates projects. |
+| `/project/{id}` | GET, DELETE | Admin Token | State Mutation | Retrieves or deletes a project. |
+| `/audit` | GET | Admin Token | None | Returns the audit log. |
+| `/token/{hash}` | DELETE | Admin Token | State Mutation | Revokes a token by hash. |
+| `/project-tokens/{id}` | GET, POST | Admin Token | State Mutation | Lists or creates project tokens. |
+
+## Security model and trust boundaries
+- **Data at Rest:** Encrypted with ChaCha20-Poly1305 if `VAULT_PASSWORD` is provided.
+- **Authentication:** Admin actions require the Admin Token. Agent access is strictly gated by immutable, expirable, and revocable hash-based tokens.
+- **Audit Logging:** Every access or management action is recorded in a ring buffer to detect unauthorized access attempts.
+
+## Tests and exact commands
+Run the complete test suite (95+ tests):
 ```bash
-VAULT_PASSWORD="master-password" ./lab-vault -config config.yaml
-```
-
-**Переменные окружения:**
-- `VAULT_PASSWORD` — мастер-пароль для шифрования снапшота
-- `VAULT_ADMIN_TOKEN` — админ-токен (альтернатива config.yaml)
-- `VAULT_BOT_TOKEN` — токен TG-бота (альтернатива config.yaml)
-
-### 4. Добавление секретов (TG-бот)
-
-```
-/start → ➕ Создать → Имя секрета → Значение
-```
-
-Бот автоматически создаст секрет и сгенерирует токен доступа.
-
-### 5. Использование (получение секрета)
-
-```bash
-# Через lab-vault-env (single secret)
-eval $(lab-vault-env -token <token>)
-
-# Через lab-vault-env (project token — все секреты проекта)
-eval $(lab-vault-env -token <project-token>)
-
-# Запись секретов проекта в .env файл
-lab-vault-env -token <project-token> --write-to /path/to/.env
-
-# Через curl
-curl http://127.0.0.1:8301/access/<token>
-
-# Через lab-vault-cli
-lab-vault-cli get <name>
-```
-
-### 6. Работа с проектами (TG-бот)
-
-```
-/start → 📁 Проекты → ➕ Создать проект → ID → Имя → Выбрать секреты
-```
-
-**В карточке проекта:**
-- 🔑 Создать токен — генерирует project token (одноразовый)
-- ➕ Добавить секрет — добавить существующий секрет в проект
-- ✏️ Заменить секреты — перевыбрать набор секретов проекта
-- 🗑 Удалить проект — удаляет проект и все его токены
-
-**Воркфлоу передачи секретов лаборанту:**
-1. ЗавЛаб создаёт секреты через бот → группирует в проект
-2. Генерирует project token → передаёт лаборанту в чате
-3. Лаборант: `lab-vault-env -token <token> --write-to /projects/X/.env`
-4. Токен сгорает после использования — секрет не появляется в чате
-
-## Архитектура
-
-```
-ЗавЛаб → TG Bot → POST /secrets → Store (RAM) → snapshot.enc (ChaCha20-Poly1305)
-                                    ↓
-Агент → lab-vault-env / curl → GET /access/:token → Store
-                                    ↓
-                              Project Token → все секреты проекта
-```
-
-**Стек:** Go 1.22, tgbotapi v5, yaml.v3, ChaCha20-Poly1305
-
-**Слои:**
-- `Store` — потокобезопасное хранилище (sync.RWMutex)
-- `Server` — HTTP API (net/http), 10 endpoints (включая проекты)
-- `Bot` — Telegram Bot с FSM (проекты + секреты, multi-step диалоги)
-- `Config` — YAML с атомарным сохранением (projects, project_tokens)
-- `Project` / `ProjectToken` — группировка секретов и изолированный доступ
-
-Подробнее: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-
-## Разработка
-
-```bash
-# Сборка
-make build
-
-# Все тесты (80+ тестов)
 make test
-
-# Тесты с покрытием
-make test-cov
-
-# Тесты с race detector
-make test-race
-
-# Линтер
-make lint
-
-# Очистка
-make clean
 ```
-
-**Тесты:** 80+ unit + integration тестов. Покрытие >70%. `go test -race` — clean.
-
-## Деплой
-
+To run tests with coverage:
 ```bash
-./deploy.sh
+make test-cov
 ```
 
-Подробнее: [docs/DEPLOY.md](docs/DEPLOY.md)
+## Operations, logs, backup/restore, rollback
+- **Operations:** Run via systemd.
+- **Logs:** Application logs to stdout/stderr. Audit logs available via `/audit` API.
+- **Backup/Restore:** Back up `snapshot.enc` (and `config.yaml`). If sealed mode is used, ensure the `VAULT_PASSWORD` is securely backed up; otherwise, data cannot be decrypted.
+- **Rollback:** Replace `snapshot.enc` with a previous version and restart the service.
 
-**Health check:** `GET /health` → `{"status":"ok","secrets":N,"uptime":"..."}`
+## Generic MCP-client example
+An agent using an HTTP-based MCP client can fetch secrets using their provisioned token:
+```json
+{
+  "method": "http.get",
+  "url": "http://127.0.0.1:8301/access/MY_TOKEN",
+  "headers": {}
+}
+```
 
-## Документация
+## Limitations and roadmap
+- Currently missing granular multi-admin roles (only a single admin token or Telegram admin).
+- No built-in native MCP server interface.
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура и модель данных
-- [docs/API.md](docs/API.md) — HTTP API спецификация
-- [docs/ADR/](docs/ADR/) — Architecture Decision Records
-- [CHANGELOG.md](CHANGELOG.md) — история изменений
+## Related TheNovaNodes modules
+- **Trickster Ecosystem Audit:** Part of the infrastructure audit suite.
+
+## License
+Proprietary / Internal. See organizational guidelines for usage.
