@@ -122,7 +122,7 @@ func newTestConfig() *Config {
 
 func makeCallback(chatID int64, data string) *tgbotapi.CallbackQuery {
 	return &tgbotapi.CallbackQuery{
-		ID:      "cb-1",
+		ID: "cb-1", From: &tgbotapi.User{ID: 11111},
 		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}},
 		Data:    data,
 	}

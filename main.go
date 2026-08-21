@@ -154,7 +154,7 @@ func NewStore(password string, audit ...*AuditLogger) *Store {
 		s.sealedKey = make([]byte, 32)
 		if _, err := rand.Read(s.sealedKey); err != nil {
 			// fallback: derive from password (less secure but works without crypto/rand)
-			s.sealedKey = deriveKey(password, []byte("lab-vault-sealed-salt"))
+			s.sealedKey = deriveKey(password, []byte("agent-vault-sealed-salt"))
 		}
 	}
 	return s
@@ -2238,7 +2238,7 @@ func main() {
 		log.Print("[main] encrypted snapshot saved, bye")
 	}()
 
-	log.Printf("[main] lab-vault ready on %s (%d secrets)", cfg.ListenAddr, store.Count())
+	log.Printf("[main] agent-vault ready on %s (%d secrets)", cfg.ListenAddr, store.Count())
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30

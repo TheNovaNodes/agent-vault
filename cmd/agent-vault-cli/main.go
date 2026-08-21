@@ -34,26 +34,26 @@ func main() {
 	case "help", "--help", "-h":
 		printUsage()
 	case "version", "--version", "-v":
-		fmt.Println("lab-vault-cli", version)
+		fmt.Println("agent-vault-cli", version)
 	case "health":
 		cmdHealth(*vaultAddr)
 	case "list":
 		cmdList(*vaultAddr, *token)
 	case "set":
 		if len(args) < 3 {
-			fmt.Fprintln(os.Stderr, "Usage: lab-vault-cli set <name> <value>")
+			fmt.Fprintln(os.Stderr, "Usage: agent-vault-cli set <name> <value>")
 			os.Exit(1)
 		}
 		cmdSet(*vaultAddr, *token, args[1], args[2])
 	case "get":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: lab-vault-cli get <name>")
+			fmt.Fprintln(os.Stderr, "Usage: agent-vault-cli get <name>")
 			os.Exit(1)
 		}
 		cmdGet(*vaultAddr, *token, args[1])
 	case "delete":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "Usage: lab-vault-cli delete <name>")
+			fmt.Fprintln(os.Stderr, "Usage: agent-vault-cli delete <name>")
 			os.Exit(1)
 		}
 		cmdDelete(*vaultAddr, *token, args[1])
@@ -69,9 +69,9 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`lab-vault-cli — Lab Vault admin CLI v2.0
+	fmt.Println(`agent-vault-cli — Lab Vault admin CLI v2.0
 
-Usage: lab-vault-cli [options] <command> [args]
+Usage: agent-vault-cli [options] <command> [args]
 
 Options:
   -addr    Vault address (default: http://127.0.0.1:8301)
@@ -88,11 +88,11 @@ Commands:
   version                  Show version
 
 Examples:
-  lab-vault-cli health
-  lab-vault-cli list
-  lab-vault-cli get api_key
-  lab-vault-cli set db_pass secret123
-  lab-vault-cli export`)
+  agent-vault-cli health
+  agent-vault-cli list
+  agent-vault-cli get api_key
+  agent-vault-cli set db_pass secret123
+  agent-vault-cli export`)
 }
 
 func doRequest(addr, method, path, token string, body interface{}) (*http.Response, error) {

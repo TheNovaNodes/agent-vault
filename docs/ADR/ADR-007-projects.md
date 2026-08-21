@@ -86,12 +86,12 @@ type ProjectToken struct {
 
 Определение типа токена: сначала проверяем `SecretTokens`, затем `ProjectTokens`.
 
-### lab-vault-env — расширение
+### agent-vault-env — расширение
 
 Добавлен флаг `--write-to <file>` для записи секретов проекта в .env файл:
 
 ```bash
-lab-vault-env -token <project-token> --write-to /path/to/.env
+agent-vault-env -token <project-token> --write-to /path/to/.env
 ```
 
 Формат .env: `NAME=value\n`, значения экранируются (newlines → `\n`, спецсимволы в кавычках).

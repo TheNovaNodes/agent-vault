@@ -1,5 +1,5 @@
 ---
-description: "lab-vault — README"
+description: "agent-vault — README"
 type: readme
 last_reviewed: 2026-06-21
 last_code_change: 2026-06-21
@@ -35,7 +35,7 @@ Lab Vault — безопасное хранилище секретов (API keys
 ### 1. Сборка
 
 ```bash
-cd /root/LabDoctorM/projects/lab-vault
+cd /root/LabDoctorM/projects/agent-vault
 export PATH=/usr/local/go/bin:$PATH
 make build
 ```
@@ -55,7 +55,7 @@ snapshot_path: ./snapshot.enc
 ### 3. Запуск
 
 ```bash
-VAULT_PASSWORD="master-password" ./lab-vault -config config.yaml
+VAULT_PASSWORD="master-password" ./agent-vault -config config.yaml
 ```
 
 **Переменные окружения:**
@@ -74,20 +74,20 @@ VAULT_PASSWORD="master-password" ./lab-vault -config config.yaml
 ### 5. Использование (получение секрета)
 
 ```bash
-# Через lab-vault-env (single secret)
-eval $(lab-vault-env -token <token>)
+# Через agent-vault-env (single secret)
+eval $(agent-vault-env -token <token>)
 
-# Через lab-vault-env (project token — все секреты проекта)
-eval $(lab-vault-env -token <project-token>)
+# Через agent-vault-env (project token — все секреты проекта)
+eval $(agent-vault-env -token <project-token>)
 
 # Запись секретов проекта в .env файл
-lab-vault-env -token <project-token> --write-to /path/to/.env
+agent-vault-env -token <project-token> --write-to /path/to/.env
 
 # Через curl
 curl http://127.0.0.1:8301/access/<token>
 
-# Через lab-vault-cli
-lab-vault-cli get <name>
+# Через agent-vault-cli
+agent-vault-cli get <name>
 ```
 
 ### 6. Работа с проектами (TG-бот)
@@ -105,7 +105,7 @@ lab-vault-cli get <name>
 **Воркфлоу передачи секретов лаборанту:**
 1. ЗавЛаб создаёт секреты через бот → группирует в проект
 2. Генерирует project token → передаёт лаборанту в чате
-3. Лаборант: `lab-vault-env -token <token> --write-to /projects/X/.env`
+3. Лаборант: `agent-vault-env -token <token> --write-to /projects/X/.env`
 4. Токен сгорает после использования — секрет не появляется в чате
 
 ## Архитектура
@@ -113,7 +113,7 @@ lab-vault-cli get <name>
 ```
 ЗавЛаб → TG Bot → POST /secrets → Store (RAM) → snapshot.enc (ChaCha20-Poly1305)
                                     ↓
-Агент → lab-vault-env / curl → GET /access/:token → Store
+Агент → agent-vault-env / curl → GET /access/:token → Store
                                     ↓
                               Project Token → все секреты проекта
 ```

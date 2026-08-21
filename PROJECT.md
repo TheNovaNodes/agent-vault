@@ -6,7 +6,7 @@ status: production
 priority: high
 stack: [Go 1.22, tgbotapi v5, yaml.v3, ChaCha20-Poly1305]
 version: "1.0.0"
-path: projects/lab-vault
+path: projects/agent-vault
 created: "2026-06-08"
 updated: "2026-06-10"
 ---
@@ -30,8 +30,8 @@ updated: "2026-06-10"
 - `main_test.go` (38 тестов) — тесты store, config, HTTP API
 - `config.yaml` — конфиг + токены агентов
 - `snapshot.enc` — снапшот секретов
-- `cmd/lab-vault-env/` — CLI для лаборантов
-- `cmd/lab-vault-cli/` — CLI для управления
+- `cmd/agent-vault-env/` — CLI для лаборантов
+- `cmd/agent-vault-cli/` — CLI для управления
 - `docs/` — документация (ADR, API, архитектура)
 
 ## Тесты

@@ -16,4 +16,4 @@ owner: ant
 production
 
 ## Репозиторий
-https://github.com/thedoctormes-hue/lab-vault
+https://github.com/TheNovaNodes/agent-vault

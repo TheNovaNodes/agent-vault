@@ -1,4 +1,4 @@
-"""Tests for lab-vault."""
+"""Tests for agent-vault."""
 
 
 def test_placeholder():

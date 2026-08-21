@@ -1,4 +1,4 @@
-module lab-vault
+module agent-vault
 
 go 1.25.0
 
