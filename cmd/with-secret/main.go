@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -16,19 +17,19 @@ import (
 // StreamRedactor buffers output and replaces secrets, ensuring boundary safety.
 type StreamRedactor struct {
 	target io.Writer
-	tokens []string
+	tokens [][]byte
 	maxLen int
 	buf    []byte
 	mu     sync.Mutex
 }
 
 func NewStreamRedactor(target io.Writer, tokens []string) *StreamRedactor {
-	var valid []string
+	var valid [][]byte
 	maxL := 0
 	for _, t := range tokens {
 		t = strings.TrimSpace(t)
 		if len(t) > 4 {
-			valid = append(valid, t)
+			valid = append(valid, []byte(t))
 			if len(t) > maxL {
 				maxL = len(t)
 			}
@@ -36,7 +37,12 @@ func NewStreamRedactor(target io.Writer, tokens []string) *StreamRedactor {
 	}
 	
 	if len(valid) == 0 {
-	    valid = tokens
+		for _, t := range tokens {
+			valid = append(valid, []byte(t))
+			if len(t) > maxL {
+				maxL = len(t)
+			}
+		}
 	}
 	
 	// Sort by length descending to match longest secrets first
@@ -52,7 +58,7 @@ func NewStreamRedactor(target io.Writer, tokens []string) *StreamRedactor {
 }
 
 func (r *StreamRedactor) Write(p []byte) (n int, err error) {
-	if len(r.tokens) == 0 {
+	if len(r.tokens) == 0 || r.maxLen == 0 {
 		return r.target.Write(p)
 	}
 
@@ -65,7 +71,7 @@ func (r *StreamRedactor) Write(p []byte) (n int, err error) {
 }
 
 func (r *StreamRedactor) Close() error {
-	if len(r.tokens) == 0 {
+	if len(r.tokens) == 0 || r.maxLen == 0 {
 		return nil
 	}
 	r.mu.Lock()
@@ -75,17 +81,21 @@ func (r *StreamRedactor) Close() error {
 }
 
 func (r *StreamRedactor) processBuffer(flushAll bool) {
-	s := string(r.buf)
 	for _, t := range r.tokens {
-		s = strings.ReplaceAll(s, t, "**********[MASKED]**********")
+		r.buf = bytes.ReplaceAll(r.buf, t, []byte("**********[MASKED]**********"))
 	}
-	r.buf = []byte(s)
 
 	if flushAll {
 		if len(r.buf) > 0 {
 			r.target.Write(r.buf)
 			r.buf = nil
 		}
+		return
+	}
+
+	if r.maxLen == 0 {
+		r.target.Write(r.buf)
+		r.buf = nil
 		return
 	}
 
