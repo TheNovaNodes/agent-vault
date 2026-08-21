@@ -490,46 +490,46 @@ curl http://127.0.0.1:8301/audit \
  -H "X-Vault-Token: <admin-token>"
 ```
 
-### lab-vault-env
+### agent-vault-env
 
 ```bash
 # Получить секрет в env (single secret)
-eval $(lab-vault-env -token <token>)
+eval $(agent-vault-env -token <token>)
 
 # Получить все секреты проекта в env (project token)
-eval $(lab-vault-env -token <project-token>)
+eval $(agent-vault-env -token <project-token>)
 
 # Записать секреты проекта в .env файл
-lab-vault-env -token <project-token> --write-to /path/to/.env
+agent-vault-env -token <project-token> --write-to /path/to/.env
 
 # Raw JSON output
-lab-vault-env -token <token> --raw
+agent-vault-env -token <token> --raw
 
 # Custom vault address
-lab-vault-env -addr http://127.0.0.1:8301 -token <token>
+agent-vault-env -addr http://127.0.0.1:8301 -token <token>
 ```
 
-### lab-vault-cli
+### agent-vault-cli
 
 ```bash
 # Health check
-lab-vault-cli health
+agent-vault-cli health
 
 # Список секретов
-lab-vault-cli list
+agent-vault-cli list
 
 # Получить секрет
-lab-vault-cli get api_key
+agent-vault-cli get api_key
 
 # Создать/обновить секрет
-lab-vault-cli set api_key secret123
+agent-vault-cli set api_key secret123
 
 # Удалить секрет
-lab-vault-cli delete api_key
+agent-vault-cli delete api_key
 
 # Экспорт
-lab-vault-cli export
+agent-vault-cli export
 
 # Killswitch
-lab-vault-cli wipe
+agent-vault-cli wipe
 ```

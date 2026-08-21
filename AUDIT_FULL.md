@@ -94,7 +94,7 @@ TG бот-токен и admin-токен зафиксированы в исто�
 
 ### 1.3. КРИТИЧНО: VAULT_PASSWORD в systemd unit-файле
 
-**Файл:** `/etc/systemd/system/lab-vault.service`
+**Файл:** `/etc/systemd/system/agent-vault.service`
 
 ```ini
 Environment=VAULT_PASSWORD=5216b52e85546484b0131cf6338dc9706783729b77fc52c9e0e13c006f12f804
@@ -136,7 +136,7 @@ mux.HandleFunc("/access/", s.handleAccess)
 
 ### 1.6. ВЫСОКИЙ: HTTP клиент в CLI без таймаута
 
-**Файл:** `cmd/lab-vault-cli/main.go:132`
+**Файл:** `cmd/agent-vault-cli/main.go:132`
 
 ```go
 return http.DefaultClient.Do(req)
@@ -201,22 +201,22 @@ func escapeHTML(s string) string {
 
 **Текущая структура:**
 ```
-lab-vault/
+agent-vault/
 ├── main.go 901 строка (Store + Config + Server + Bot + main)
 ├── main_test.go 707 строк
 ├── bot_test.go 750 строк
 ├── cmd/
-│ ├── lab-vault-cli/ 392 строки, 0 тестов
-│ └── lab-vault-env/ 102 строки, 0 тестов
+│ ├── agent-vault-cli/ 392 строки, 0 тестов
+│ └── agent-vault-env/ 102 строки, 0 тестов
 ```
 
 **Рекомендуемая структура:**
 ```
-lab-vault/
+agent-vault/
 ├── cmd/
-│ ├── lab-vault/ main.go (только orchestration)
-│ ├── lab-vault-cli/
-│ └── lab-vault-env/
+│ ├── agent-vault/ main.go (только orchestration)
+│ ├── agent-vault-cli/
+│ └── agent-vault-env/
 ├── internal/
 │ ├── store/ Store + тесты
 │ ├── server/ HTTP Server + тесты
@@ -290,9 +290,9 @@ Go стандарт — пробелы (gofmt). В проекте 662 таба �
 
 | Пакет | Покрытие | Комментарий |
 |-------|----------|-------------|
-| lab-vault (main) | 75.4% | Хорошо |
-| cmd/lab-vault-cli | 0.0% | Нет тестов |
-| cmd/lab-vault-env | 0.0% | Нет тестов |
+| agent-vault (main) | 75.4% | Хорошо |
+| cmd/agent-vault-cli | 0.0% | Нет тестов |
+| cmd/agent-vault-env | 0.0% | Нет тестов |
 
 CLI и env утилиты — 0% покрытия. Это 392 + 102 = 494 строки кода без тестов.
 
@@ -337,14 +337,14 @@ var configSaveMu sync.Mutex
 
 ### 4.1. Systemd unit — базовый, без харденинга
 
-**Файл:** `/etc/systemd/system/lab-vault.service`
+**Файл:** `/etc/systemd/system/agent-vault.service`
 
 ```ini
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/LabDoctorM/projects/lab-vault
-ExecStart=/root/LabDoctorM/projects/lab-vault/lab-vault
+WorkingDirectory=/root/LabDoctorM/projects/agent-vault
+ExecStart=/root/LabDoctorM/projects/agent-vault/agent-vault
 Environment=VAULT_PASSWORD=5216b52e85546484b0131cf6338dc9706783729b77fc52c9e0e13c006f12f804
 Restart=on-failure
 RestartSec=5
@@ -363,9 +363,9 @@ RestartSec=5
 Type=simple
 User=vault
 Group=vault
-WorkingDirectory=/root/LabDoctorM/projects/lab-vault
-ExecStart=/root/LabDoctorM/projects/lab-vault/lab-vault
-EnvironmentFile=/etc/lab-vault/env
+WorkingDirectory=/root/LabDoctorM/projects/agent-vault
+ExecStart=/root/LabDoctorM/projects/agent-vault/agent-vault
+EnvironmentFile=/etc/agent-vault/env
 Restart=on-failure
 RestartSec=5
 StartLimitInterval=60
@@ -374,7 +374,7 @@ WatchdogSec=30
 NoNewPrivileges=yes
 ProtectSystem=strict
 PrivateTmp=yes
-ReadWritePaths=/root/LabDoctorM/projects/lab-vault
+ReadWritePaths=/root/LabDoctorM/projects/agent-vault
 ```
 
 ### 4.2. Нет CI/CD
@@ -390,8 +390,8 @@ Makefile есть, но нет CI pipeline (GitHub Actions, GitLab CI и т.д.)
 ### 4.4. Мусор в репозитории
 
 ```bash
-$ ls -la lab-vault.bak lab-vault.bin
--rwxr-xr-x 9.8M lab-vault.bak
+$ ls -la agent-vault.bak agent-vault.bin
+-rwxr-xr-x 9.8M agent-vault.bak
 ```
 
 Бинарники (`.bak`, `.bin`) не в `.gitignore`. 9.8MB мусора в репозитории.
@@ -456,10 +456,10 @@ TLS заявлен в конфиге (`use_tls`, `tls_cert_path`, `tls_key_path`
 |---|-------------|-----------|----------|-------------|
 | 1 | 🔴 CRITICAL | Security | Секреты на диске в plain JSON (нет ChaCha20-Poly1305) | main.go:836-877 |
 | 2 | 🔴 CRITICAL | Security | TG бот-токен и admin-токен в git history | config.yaml (git) |
-| 3 | 🔴 CRITICAL | Security | VAULT_PASSWORD в plain text в systemd unit | /etc/systemd/system/lab-vault.service |
+| 3 | 🔴 CRITICAL | Security | VAULT_PASSWORD в plain text в systemd unit | /etc/systemd/system/agent-vault.service |
 | 4 | 🔴 CRITICAL | Security | Нет rate limiting на /access/:token | main.go:208 |
 | 5 | 🟠 HIGH | Security | One-time токены не инвалидируются после использования | main.go:293-333 |
-| 6 | 🟠 HIGH | Security | HTTP клиент в CLI без таймаута | cmd/lab-vault-cli/main.go:132 |
+| 6 | 🟠 HIGH | Security | HTTP клиент в CLI без таймаута | cmd/agent-vault-cli/main.go:132 |
 | 7 | 🟠 HIGH | Security | Bot не проверяет TG Admin ID | main.go:739+ |
 | 8 | 🟠 HIGH | Security | Токены доступа хранятся в config.yaml в open text | config.yaml:13-28 |
 | 9 | 🟡 MEDIUM | Race Condition | Data race в TestConcurrentSecretCreation | bot_test.go:733 |
@@ -476,7 +476,7 @@ TLS заявлен в конфиге (`use_tls`, `tls_cert_path`, `tls_key_path`
 | 20 | 🟡 MEDIUM | Performance | TLS заявлен, но не используется | main.go:217 |
 | 21 | 🟢 LOW | Security | escapeHTML не экранирует кавычки | main.go:410-415 |
 | 22 | 🟢 LOW | Code Quality | Неиспользуемый импорт context | main.go:4 |
-| 23 | 🟢 LOW | DevOps | Бинарники (.bak, .bin) в репозитории | lab-vault.bak, lab-vault.bin |
+| 23 | 🟢 LOW | DevOps | Бинарники (.bak, .bin) в репозитории | agent-vault.bak, agent-vault.bin |
 | 24 | 🟢 LOW | DevOps | deploy.sh без отката | deploy.sh |
 
 ---
@@ -493,7 +493,7 @@ TLS заявлен в конфиге (`use_tls`, `tls_cert_path`, `tls_key_path`
 | 4 | Добавить rate limiter на /access/:token | 1ч | main.go |
 | 5 | Инвалидировать токен после использования | 15м | main.go |
 | 6 | Добавить проверку TG Admin ID в handleMessage | 15м | main.go |
-| 7 | Исправить HTTP клиент в CLI (добавить таймаут) | 15м | cmd/lab-vault-cli/main.go |
+| 7 | Исправить HTTP клиент в CLI (добавить таймаут) | 15м | cmd/agent-vault-cli/main.go |
 | 8 | Харденинг systemd unit (отдельный пользователь, EnvironmentFile) | 1ч | systemd unit |
 
 ### Фаза 2: Архитектура и качество (3-5 дней)

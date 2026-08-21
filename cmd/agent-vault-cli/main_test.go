@@ -289,7 +289,7 @@ func TestCmdGetNotFound(t *testing.T) {
 	srv := newTestCLIServer()
 	defer srv.Close()
 
-	binary := "/tmp/lab-vault-cli-test"
+	binary := "/tmp/agent-vault-cli-test"
 	err := buildBinary(binary)
 	if err != nil {
 		t.Skipf("go build not available: %v", err)
@@ -362,7 +362,7 @@ func TestCmdDeleteNotFound(t *testing.T) {
 	srv := newTestCLIServer()
 	defer srv.Close()
 
-	binary := "/tmp/lab-vault-cli-test"
+	binary := "/tmp/agent-vault-cli-test"
 	err := buildBinary(binary)
 	if err != nil {
 		t.Skipf("go build not available: %v", err)

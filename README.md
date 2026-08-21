@@ -4,11 +4,11 @@ status: active
 protocol: http
 primary_capability: secret-management
 requires: go, telegram-bot-api
-works_with: lab-vault-env, lab-vault-cli
+works_with: agent-vault-env, agent-vault-cli
 last_verified: 2026-08-21
 ```
 
-# Lab Vault (agent-vault)
+# Agent Vault (agent-vault)
 A lightweight, secure, and isolated secrets manager designed specifically for AI agents, featuring Telegram-based management, ChaCha20-Poly1305 encryption, and simple HTTP APIs.
 
 ## Status and Last Verified Date
@@ -21,7 +21,7 @@ Last Verified: 2026-08-21
 - Provides a Telegram Bot interface for admins to manage secrets and access tokens.
 - Supports single-secret tokens and project-level tokens (groups of secrets).
 - Exposes a minimal HTTP API for agent access.
-- Provides CLI tools (`lab-vault-env`, `lab-vault-cli`) for environment-variable generation and administration.
+- Provides CLI tools (`agent-vault-env`, `agent-vault-cli`) for environment-variable generation and administration.
 - Maintains a ring-buffer audit log of all access and management actions.
 
 **What it does not do:**
@@ -30,7 +30,7 @@ Last Verified: 2026-08-21
 - Does not support high-availability clustering or complex RBAC.
 
 ## Why an agent would use it
-Agents use Lab Vault to securely retrieve credentials, API keys, or environment variables at runtime without hardcoding sensitive data into their configuration or prompts. By using `lab-vault-env`, agents can transparently inject secrets into their execution environments.
+Agents use Agent Vault to securely retrieve credentials, API keys, or environment variables at runtime without hardcoding sensitive data into their configuration or prompts. By using `agent-vault-env`, agents can transparently inject secrets into their execution environments.
 
 ## Architecture and dependencies
 **Architecture:**
@@ -55,7 +55,7 @@ Fully compatible with Linux environments and can run as a standard systemd servi
 2. Create a `config.yaml` based on `config.yaml.example`.
 3. Start the server (with an optional password for sealed mode):
    ```bash
-   VAULT_PASSWORD="my-secure-password" ./lab-vault -config config.yaml
+   VAULT_PASSWORD="my-secure-password" ./agent-vault -config config.yaml
    ```
 4. Health check:
    ```bash
@@ -66,12 +66,12 @@ Fully compatible with Linux environments and can run as a standard systemd servi
 - `VAULT_PASSWORD`: Used to enable sealed mode (encryption at rest).
 - `VAULT_ADMIN_TOKEN`: Admin token for HTTP API, overrides `admin_token` in `config.yaml`.
 - `VAULT_BOT_TOKEN`: Telegram bot token, overrides `tg_bot_token` in `config.yaml`.
-- `VAULT_TOKEN`: Used by `lab-vault-env` to authenticate.
+- `VAULT_TOKEN`: Used by `agent-vault-env` to authenticate.
 
 *Priority: Environment Variables > config.yaml > Defaults.*
 
 ## Complete MCP tool/API table with side effects
-Since Lab Vault provides an HTTP API rather than native MCP tools, here is the API table:
+Since Agent Vault provides an HTTP API rather than native MCP tools, here is the API table:
 
 | Endpoint | Method | Requires Auth | Side Effects | Description |
 |----------|--------|---------------|--------------|-------------|

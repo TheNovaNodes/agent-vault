@@ -1,4 +1,4 @@
-# Contributing to lab-vault
+# Contributing to agent-vault
 
 ## Commit Convention
 - Use conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`, `ci:`, `build:`

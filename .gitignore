@@ -1,7 +1,7 @@
 # === Binary build outputs ===
-/lab-vault
-/lab-vault-env
-/lab-vault-cli
+/agent-vault
+/agent-vault-env
+/agent-vault-cli
 *.exe
 *.bin
 *.bak
@@ -33,8 +33,8 @@ config.local.yaml
 !.env.example
 
 # === Binary artifacts ===
-lab-vault.bak
-lab-vault.bin
+agent-vault.bak
+agent-vault.bin
 
 # === Snapshot (encrypted secrets) ===
 snapshot.enc

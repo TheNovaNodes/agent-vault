@@ -1,9 +1,9 @@
 #!/bin/bash
-# deploy.sh — build, deploy, and verify lab-vault
+# deploy.sh — build, deploy, and verify agent-vault
 set -euo pipefail
 
-PROJECT_DIR="/root/LabDoctorM/projects/lab-vault"
-BIN="$PROJECT_DIR/lab-vault"
+PROJECT_DIR="/root/LabDoctorM/projects/agent-vault"
+BIN="$PROJECT_DIR/agent-vault"
 API="http://127.0.0.1:8301"
 
 # Токен из переменной окружения или config.yaml
@@ -27,34 +27,34 @@ if [ -f "$BIN" ]; then
     cp "$BIN" "$BIN.bak"
     echo "  Backed up current binary"
 fi
-go build -o lab-vault . 2>&1 && ok "Build OK" || fail "Build failed"
+go build -o agent-vault . 2>&1 && ok "Build OK" || fail "Build failed"
 echo "  Binary: $(ls -lh "$BIN" | awk '{print $5, $6, $7, $8}')"
 
 echo ""
 echo "=== [2/5] Deploy ==="
 # Save current state for rollback
 WAS_ACTIVE=false
-if systemctl is-active --quiet lab-vault 2>/dev/null; then
+if systemctl is-active --quiet agent-vault 2>/dev/null; then
     WAS_ACTIVE=true
     echo "  Service was active — will rollback on failure"
 fi
 
-if systemctl is-active --quiet lab-vault 2>/dev/null; then
-    systemctl stop lab-vault
+if systemctl is-active --quiet agent-vault 2>/dev/null; then
+    systemctl stop agent-vault
     echo "  Stopped old service"
 fi
 sleep 1
-systemctl start lab-vault && ok "Service started" || fail "Service start failed"
+systemctl start agent-vault && ok "Service started" || fail "Service start failed"
 sleep 2
 
 # Rollback on failure
-if ! systemctl is-active --quiet lab-vault 2>/dev/null; then
+if ! systemctl is-active --quiet agent-vault 2>/dev/null; then
     fail "Service not running after deploy — rolling back"
     if [ "$WAS_ACTIVE" = true ]; then
         echo "  ↩️  Restarting previous instance..."
-        systemctl start lab-vault
+        systemctl start agent-vault
         sleep 2
-        if systemctl is-active --quiet lab-vault; then
+        if systemctl is-active --quiet agent-vault; then
             ok "Rollback successful"
         else
             fail "Rollback also failed — manual intervention required"
@@ -65,11 +65,11 @@ fi
 echo ""
 echo "=== [3/5] Health checks ==="
 # systemd status
-if systemctl is-active --quiet lab-vault; then
+if systemctl is-active --quiet agent-vault; then
     ok "systemd: active"
 else
     fail "systemd: inactive"
-    journalctl -u lab-vault --no-pager -n 10
+    journalctl -u agent-vault --no-pager -n 10
 fi
 
 # API health (no auth required)
@@ -118,12 +118,12 @@ if [ -n "$ADMIN_TOKEN" ]; then
 fi
 
 # Recent errors
-ERRORS=$(journalctl -u lab-vault --since "1 min ago" --no-pager 2>/dev/null | grep -c "error\|ERROR\|panic" || true)
+ERRORS=$(journalctl -u agent-vault --since "1 min ago" --no-pager 2>/dev/null | grep -c "error\|ERROR\|panic" || true)
 if [ "$ERRORS" -eq 0 ]; then
     ok "No recent errors in journal"
 else
     fail "$ERRORS recent errors"
-    journalctl -u lab-vault --since "1 min ago" --no-pager | grep -i "error\|panic" || true
+    journalctl -u agent-vault --since "1 min ago" --no-pager | grep -i "error\|panic" || true
     API_FLOW_OK=false
 fi
 
@@ -131,16 +131,16 @@ fi
 if [ "$API_FLOW_OK" = false ] && [ "$WAS_ACTIVE" = true ]; then
     echo ""
     echo "  ⚠️  API flow test failed — rolling back..."
-    systemctl stop lab-vault
+    systemctl stop agent-vault
     sleep 1
     # Restore previous binary if backup exists
     if [ -f "$BIN.bak" ]; then
         cp "$BIN.bak" "$BIN"
         echo "  ↩️  Restored previous binary"
     fi
-    systemctl start lab-vault
+    systemctl start agent-vault
     sleep 2
-    if systemctl is-active --quiet lab-vault; then
+    if systemctl is-active --quiet agent-vault; then
         ok "Rollback successful"
     else
         fail "Rollback failed — manual intervention required"
@@ -149,7 +149,7 @@ fi
 
 echo ""
 echo "=== [5/5] Summary ==="
-echo "  $(systemctl show lab-vault --property=ActiveEnterTimestamp --value 2>/dev/null || echo 'N/A')"
+echo "  $(systemctl show agent-vault --property=ActiveEnterTimestamp --value 2>/dev/null || echo 'N/A')"
 echo "  $(curl -sf "$API/health" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Secrets: {d.get(\"secrets\",\"?\")}, Uptime: {d.get(\"uptime\",\"?\")}')" 2>/dev/null || echo 'N/A')"
 
 echo ""

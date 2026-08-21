@@ -36,7 +36,7 @@ Lab Vault — **in-memory секретный менеджер** с Telegram-бо
 Внешние клиенты:
  ЗавЛаб ─────────▶ TG Bot ──────▶ POST /secrets ──────▶ Store
  POST /projects ──▶ Config
- Лаборант ───────▶ lab-vault-env ─▶ GET /access/:token ─▶ Store
+ Лаборант ───────▶ agent-vault-env ─▶ GET /access/:token ─▶ Store
  (env/ (single token → 1 secret)
  .env) (project token → N secrets)
 ```
@@ -79,7 +79,7 @@ type Store struct {
 **Потокобезопасность:** `sync.RWMutex` — множественные читатели, эксклюзивный писатель.
 
 **Sealed key derivation:** `deriveKey(password, fixed_salt)` → Argon2id → 32-byte key.
-Фиксированная salt (`"lab-vault-sealed-key-salt-v1"`) — детерминистичный ключ для каждого инстанса.
+Фиксированная salt (`"agent-vault-sealed-key-salt-v1"`) — детерминистичный ключ для каждого инстанса.
 
 ### 2. Server (HTTP API)
 
@@ -316,25 +316,25 @@ func decryptSnapshot(data, password) ([]byte, error) // file → ChaCha20-Poly13
 
 ## CLI-утилиты
 
-### lab-vault-env
+### agent-vault-env
 
-**Путь:** `cmd/lab-vault-env/main.go`
+**Путь:** `cmd/agent-vault-env/main.go`
 
 **Назначение:** Получение секретов по токену. Поддерживает оба типа токенов.
 
 **Single secret token** → `export NAME=value`:
 ```bash
-eval $(lab-vault-env -token <token>)
+eval $(agent-vault-env -token <token>)
 ```
 
 **Project token** → все секреты проекта:
 ```bash
-eval $(lab-vault-env -token <project-token>)
+eval $(agent-vault-env -token <project-token>)
 ```
 
 **Запись в .env файл** (только для project tokens):
 ```bash
-lab-vault-env -token <project-token> --write-to /path/to/.env
+agent-vault-env -token <project-token> --write-to /path/to/.env
 ```
 
 **Флаги:**
@@ -353,18 +353,18 @@ lab-vault-env -token <project-token> --write-to /path/to/.env
 
 Тело читается один раз, затем парсится в оба формата.
 
-### lab-vault-cli
+### agent-vault-cli
 
-**Путь:** `cmd/lab-vault-cli/main.go`
+**Путь:** `cmd/agent-vault-cli/main.go`
 
 **Назначение:** Администрирование vault через командную строку (список, создание, удаление, экспорт).
 
 **Команды:** `health`, `list`, `get`, `set`, `delete`, `wipe`, `export`, `version`
 
 ```bash
-lab-vault-cli list
-lab-vault-cli set db_pass secret123
-lab-vault-cli export
+agent-vault-cli list
+agent-vault-cli set db_pass secret123
+agent-vault-cli export
 ```
 
 ## Project и ProjectToken (модели)

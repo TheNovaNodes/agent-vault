@@ -1,5 +1,5 @@
 ---
-description: "lab-vault — история изменений"
+description: "agent-vault — история изменений"
 type: changelog
 last_reviewed: 2026-06-21
 last_code_change: 2026-06-21
@@ -21,16 +21,16 @@ status: active
 - **Проекты** — группировка секретов в проекты через TG-бот (FSM: ID → имя → секреты)
 - **Project tokens** — одноразовые токены доступа ко всем секретам проекта (SHA-256, TTL)
 - **Управление проектами через TG-бот**: создание, просмотр, добавление секретов, замена секретов, удаление
-- **`lab-vault-env --write-to <file>`** — запись всех секретов проекта в .env файл
+- **`agent-vault-env --write-to <file>`** — запись всех секретов проекта в .env файл
 - **HTTP API для проектов**: `GET /projects`, `POST /projects`, `GET|DELETE /project/:id`
 - **HTTP API для project tokens**: `GET /project-tokens/:project_id`, `POST /project-tokens/:project_id`
 - **Project token response** — `/access/:token` теперь возвращает `{project, project_id, secrets}` для project tokens
 - **Персистентность проектов** — Project и ProjectToken сохраняются в config.yaml
-- Тесты: bot_test.go (+8 тестов проектных операций), cmd/lab-vault-env/main_test.go (+5 тестов)
+- Тесты: bot_test.go (+8 тестов проектных операций), cmd/agent-vault-env/main_test.go (+5 тестов)
 - `docs/ADR/ADR-007-projects.md` — ADR для проектного функционала
 
 ### Changed
-- **lab-vault-env** — поддержка двух форматов ответа (single secret + project token)
+- **agent-vault-env** — поддержка двух форматов ответа (single secret + project token)
 - **Session struct** — добавлено поле `addSecretProjectID`
 - **sendProjectView** — отображение секретов проекта + кнопки «Добавить секрет», «Заменить секреты»
 - **Token cleanup** — `cleanupExpiredTokens` теперь также чистит expired project tokens
@@ -44,13 +44,13 @@ status: active
 ## [2.0.0] - 2026-06-10
 
 ### Changed
-- **CLI v2.0** — `lab-vault-cli` полностью переписан под реальный API (убраны несуществующие команды: projects, audit, token, rotate)
-- **lab-vault-env** — теперь использует `/access/:token` вместо несуществующего `/secrets/{project}`
+- **CLI v2.0** — `agent-vault-cli` полностью переписан под реальный API (убраны несуществующие команды: projects, audit, token, rotate)
+- **agent-vault-env** — теперь использует `/access/:token` вместо несуществующего `/secrets/{project}`
 - **Telegram меню** — зарегистрированы актуальные команды `/start` и `/cancel` через `setMyCommands`
 
 ### Added
-- Тесты для `lab-vault-cli` (17 тестов: doRequest, cmdHealth, cmdList, cmdGet, cmdSet, cmdDelete, cmdExport, printUsage, prettyPrint, integration flow)
-- Тесты для `lab-vault-env` (5 тестов: access endpoint, invalid token, export format)
+- Тесты для `agent-vault-cli` (17 тестов: doRequest, cmdHealth, cmdList, cmdGet, cmdSet, cmdDelete, cmdExport, printUsage, prettyPrint, integration flow)
+- Тесты для `agent-vault-env` (5 тестов: access endpoint, invalid token, export format)
 - `setMyCommands` вызывается при старте бота для регистрации команд в меню Telegram
 
 ### Fixed
@@ -70,7 +70,7 @@ status: active
 - **SHA-256 хеширование токенов** — токены не хранятся в plain text в config.yaml
 - **Telegram Admin ID** — бот отвечает только администратору (поле `tg_admin_id`)
 - **HTML-экранирование кавычек** — `escapeHTML` теперь экранирует `"` и `'`
-- **HTTP timeout в CLI** — `lab-vault-cli` и `lab-vault-env` используют 10s timeout
+- **HTTP timeout в CLI** — `agent-vault-cli` и `agent-vault-env` используют 10s timeout
 
 ### Fixed
 - **Race condition** — `config.save()` вызывался вне критической секции `config.mu` (4 места исправлено)
@@ -90,7 +90,7 @@ status: active
 
 ### Docs
 - `ARCHITECTURE.md` — обновлена секция безопасности, снапшота, модели данных
-- `API.md` — исправлены примеры lab-vault-cli, добавлено описание SHA-256 хеширования
+- `API.md` — исправлены примеры agent-vault-cli, добавлено описание SHA-256 хеширования
 - `README.md` — обновлены числа, описание функций, env vars
 
 ## [1.0.0] - 2026-06-10
@@ -104,8 +104,8 @@ status: active
 - Killswitch: `DELETE /secrets` — мгновенное удаление всех секретов
 - Удаление токенов: wipe_tokens через бота
 - Отзыв токенов при удалении секрета
-- CLI-утилита `lab-vault-env` для получения секретов в env
-- CLI-утилита `lab-vault-cli` для управления через командную строку
+- CLI-утилита `agent-vault-env` для получения секретов в env
+- CLI-утилита `agent-vault-cli` для управления через командную строку
 - 65 unit-тестов (bot_test.go: 27, main_test.go: 38)
 - Makefile с целями build, test, test-cov, lint, clean
 - Скрипт деплоя deploy.sh

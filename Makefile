@@ -1,9 +1,9 @@
 .PHONY: all build test test-cov test-short test-race clean lint fmt run dev deploy init help
 
 # === Variables ===
-BINARY=lab-vault
-ENV_BINARY=lab-vault-env
-CLI_BINARY=lab-vault-cli
+BINARY=agent-vault
+ENV_BINARY=agent-vault-env
+CLI_BINARY=agent-vault-cli
 GO=go
 GOFLAGS=-v
 CONFIG=config.yaml
@@ -27,11 +27,11 @@ build: $(BINARY) $(ENV_BINARY) $(CLI_BINARY) ## Собрать все бинар
 $(BINARY): *.go
 	$(GO) build $(GOFLAGS) -o $(BINARY) .
 
-$(ENV_BINARY): cmd/lab-vault-env/*.go
-	$(GO) build $(GOFLAGS) -o $(ENV_BINARY) ./cmd/lab-vault-env
+$(ENV_BINARY): cmd/agent-vault-env/*.go
+	$(GO) build $(GOFLAGS) -o $(ENV_BINARY) ./cmd/agent-vault-env
 
-$(CLI_BINARY): cmd/lab-vault-cli/*.go
-	$(GO) build $(GOFLAGS) -o $(CLI_BINARY) ./cmd/lab-vault-cli
+$(CLI_BINARY): cmd/agent-vault-cli/*.go
+	$(GO) build $(GOFLAGS) -o $(CLI_BINARY) ./cmd/agent-vault-cli
 
 # === Test ===
 test: ## Запустить все тесты (95+ тестов)
@@ -74,14 +74,14 @@ clean: ## Очистка артефактов сборки
 
 # === Deploy ===
 deploy: build ## Деплой на сервер
-	@echo "[deploy] stopping lab-vault..."
-	@sudo systemctl stop lab-vault 2>/dev/null || true
+	@echo "[deploy] stopping agent-vault..."
+	@sudo systemctl stop agent-vault 2>/dev/null || true
 	@echo "[deploy] copying binary..."
-	sudo cp $(BINARY) /usr/local/bin/lab-vault
-	@echo "[deploy] starting lab-vault..."
-	sudo systemctl start lab-vault
+	sudo cp $(BINARY) /usr/local/bin/agent-vault
+	@echo "[deploy] starting agent-vault..."
+	sudo systemctl start agent-vault
 	@echo "[deploy] checking status..."
-	@sudo systemctl status lab-vault --no-pager || true
+	@sudo systemctl status agent-vault --no-pager || true
 
 # === Init ===
 init: $(BINARY) ## Инициализация vault (создание snapshot.enc)
