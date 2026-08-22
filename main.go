@@ -1357,7 +1357,7 @@ func cancelKB() tgbotapi.InlineKeyboardMarkup {
 func (b *Bot) sendMainMenu(chatID int64) {
 	b.resetSession(chatID)
 	secrets := b.store.List()
-	text := fmt.Sprintf("🔐 <b>Lab Vault</b>\n\n📋 Секретов: %d\n\nВыберите действие:", len(secrets))
+	text := fmt.Sprintf("🎭 <b>Lab Vault Agent OS</b>\n<i>Master AI Security Suite</i>\n\n🛡 <b>Статус:</b> 🟢 ACTIVE (RAM Sealed Mode)\n📋 <b>Секретов в хранилище:</b> %d\n\nВыберите действие из меню ниже:", len(secrets))
 	sendWithMenu(b.api, chatID, text, mainMenuKB())
 }
 
@@ -1553,11 +1553,21 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 	}
 	b.config.mu.RUnlock()
 
-	text := fmt.Sprintf("🔒 <b>%s</b>\n\nЗначение:\n<pre>%s</pre>\n\n📅 Обновлён: %s\n🔑 Активных токенов: %d",
+	categoryIcon := "🔑"
+	if strings.Contains(strings.ToLower(name), "agent") || strings.Contains(strings.ToLower(name), "jules") || strings.Contains(strings.ToLower(name), "manus") {
+		categoryIcon = "🤖"
+	} else if strings.Contains(strings.ToLower(name), "db") || strings.Contains(strings.ToLower(name), "postgres") {
+		categoryIcon = "🗄"
+	} else if strings.Contains(strings.ToLower(name), "master") || strings.Contains(strings.ToLower(name), "admin") {
+		categoryIcon = "🛡"
+	}
+
+	text := fmt.Sprintf("🛡 <b>LAB VAULT SECRET CARD</b>\n──────────────────────────────\n%s <b>Имя:</b> <code>%s</code>\n🔒 <b>Шифрование:</b> ChaCha20-Poly1305 (RAM-Only)\n🔑 <b>Активных токенов:</b> %d\n📅 <b>Обновлён:</b> %s\n──────────────────────────────\n📋 <b>Значение:</b>\n<pre>%s</pre>",
+		categoryIcon,
 		escapeHTML(secret.Name),
-		escapeHTML(secret.Value),
-		escapeHTML(secret.UpdatedAt.Format("02.01.2006 15:04")),
-		tokenCount)
+		tokenCount,
+		escapeHTML(secret.UpdatedAt.Format("02.01.2006 15:04:05 UTC")),
+		escapeHTML(secret.Value))
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
