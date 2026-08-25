@@ -467,7 +467,7 @@ curl -X POST http://127.0.0.1:8301/secrets \
  -d '{"name":"api_key","value":"secret456"}'
 
 # Получить по токену
-curl http://127.0.0.1:8301/access/<token>
+curl -H "Authorization: Bearer <token>" http://127.0.0.1:8301/access
 
 # Экспорт
 curl http://127.0.0.1:8301/export \

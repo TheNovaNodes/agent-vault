@@ -1645,8 +1645,8 @@ func (b *Bot) createSecretToken(chatID int64, name string) {
 	}
 
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s http://%s/access/%s</pre>",
-		escapeHTML(name), token, ttlStr, addr, token)
+	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s -H "Authorization: Bearer %s" http://%s/access</pre>",
+		escapeHTML(name), token, ttlStr, token, addr)
 
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -1857,8 +1857,8 @@ func (b *Bot) createProjectToken(chatID int64, id string) {
 		ttlStr = escapeHTML(expires.Format("02.01.2006 15:04"))
 	}
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s http://%s/access/%s</pre>",
-		escapeHTML(project.Name), token, ttlStr, addr, token)
+	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H "Authorization: Bearer %s" http://%s/access</pre>",
+		escapeHTML(project.Name), token, ttlStr, token, addr)
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("◀️ К проекту", "project_view:"+id),
@@ -2125,8 +2125,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 			b.resetSession(chatID)
 			sendWithMenu(b.api, chatID,
-				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s http://%s/access/%s</pre>",
-					escapeHTML(sess.name), token, ttlStr, addr, token),
+				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H "Authorization: Bearer %s" http://%s/access</pre>",
+					escapeHTML(sess.name), token, ttlStr, token, addr),
 				mainMenuKB())
 		} else {
 			b.resetSession(chatID)

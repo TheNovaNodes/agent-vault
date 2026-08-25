@@ -2,7 +2,7 @@
 # deploy.sh — build, deploy, and verify agent-vault
 set -euo pipefail
 
-PROJECT_DIR="/root/projects/TheNovaNodes/agent-vault"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEV_BIN="$PROJECT_DIR/agent-vault"
 PROD_BIN="/usr/local/bin/agent-vault"
 API="http://127.0.0.1:8301"
@@ -23,13 +23,20 @@ fi
 echo "=== [1/5] Build & Prepare Production Binary ==="
 cd "$PROJECT_DIR"
 export PATH=/usr/local/go/bin:$PATH
+if ! command -v go &> /dev/null; then
+    fail "Go is not installed or not in PATH"
+fi
 # Backup current production binary for rollback
 if [ -f "$PROD_BIN" ]; then
     cp "$PROD_BIN" "$PROD_BIN.bak"
     echo "  Backed up current production binary to $PROD_BIN.bak"
 fi
 go build -o agent-vault . 2>&1 && ok "Build OK" || fail "Build failed"
+
+# Save current state for rollback
+WAS_ACTIVE=false
 if systemctl is-active --quiet agent-vault 2>/dev/null; then
+    WAS_ACTIVE=true
     systemctl stop agent-vault
     echo "  Stopped running service before binary replacement"
 fi
@@ -38,8 +45,6 @@ echo "  Production Binary: $(ls -lh "$PROD_BIN" | awk '{print $5, $6, $7, $8}')"
 
 echo ""
 echo "=== [2/5] Deploy ==="
-# Save current state for rollback
-WAS_ACTIVE=true
 systemctl start agent-vault && ok "Service started" || fail "Service start failed"
 sleep 2
 
