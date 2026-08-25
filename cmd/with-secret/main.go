@@ -105,9 +105,13 @@ func (r *StreamRedactor) processBuffer(flushAll bool) {
 }
 
 func main() {
-	if len(os.Args) < 5 || os.Args[2] != "--env" {
-		fmt.Fprintf(os.Stderr, "Usage: with-secret <pointer_id> --env <VAR_NAME> -- <command...>\n")
-		os.Exit(1)
+	os.Exit(run())
+}
+
+func run() int {
+	if len(os.Args) < 5 || os.Args[2] != "--secret-path-env" {
+		fmt.Fprintf(os.Stderr, "Usage: with-secret <pointer_id> --secret-path-env <VAR_NAME> -- <command...>\n")
+		return 1
 	}
 
 	pointerID := os.Args[1]
@@ -118,7 +122,7 @@ func main() {
 	secretBytes, err := os.ReadFile(secretPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error: Secret pointer %s not found.\n", pointerID)
-		os.Exit(1)
+		return 1
 	}
 	
 	// Ensure the secret is only kept as long as needed by deleting it from shm after command finishes
@@ -129,6 +133,18 @@ func main() {
 	if len(rawTokens) == 0 {
 		rawTokens = [][]byte{secretBytes}
 	}
+
+	// Zeroize memory on exit
+	defer func() {
+		for i := range secretBytes {
+			secretBytes[i] = 0
+		}
+		for _, t := range rawTokens {
+			for i := range t {
+				t[i] = 0
+			}
+		}
+	}()
 
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	// Pass the path instead of the raw secret
@@ -143,7 +159,7 @@ func main() {
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Failed to start command: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Signal forwarding
@@ -161,21 +177,12 @@ func main() {
 	outRedactor.Close()
 	errRedactor.Close()
 
-	// Zeroize memory
-	for i := range secretBytes {
-		secretBytes[i] = 0
-	}
-	for _, t := range rawTokens {
-		for i := range t {
-			t[i] = 0
-		}
-	}
-
 	if err != nil {
 		if exiterr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exiterr.ExitCode())
+			return exiterr.ExitCode()
 		}
-		os.Exit(1)
+		return 1
 	}
-	os.Exit(0)
+	return 0
+
 }

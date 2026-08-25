@@ -38,7 +38,7 @@ if __name__ == "__main__":
         
         # Fallback cleanup: remove the file after 5 minutes if not consumed
         import subprocess
-        subprocess.Popen(["bash", "-c", f"sleep 300 && rm -f {secret_path}"])
+        subprocess.Popen(['python3', '-c', f'import time, os; time.sleep(300); os.unlink("{secret_path}") if os.path.exists("{secret_path}") else None'])
         
         print("✅ MCP Vault Gateway: Секрет успешно загружен в защищенную память.")
         print("\n--- Открытые метаданные для LLM ---")
@@ -46,6 +46,6 @@ if __name__ == "__main__":
             print(f"🏷️ Имя секрета: {secrets['name']}")
         print(f"🔗 Указатель для вызова команд: {pointer_id}")
         print("----------------------------------")
-        print(f"💡 Пример: with-secret {pointer_id} --env MY_VAR -- echo $MY_VAR")
+        print(f"💡 Пример: with-secret {pointer_id} --secret-path-env MY_VAR -- cat $MY_VAR")
     else:
         print("❌ Не удалось получить секрет.")
