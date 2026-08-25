@@ -1153,3 +1153,28 @@ func TestHandleAccessO1Lookup(t *testing.T) {
 	}
 	cfg.mu.RUnlock()
 }
+
+func TestSealedStoreRestart(t *testing.T) {
+	password := "my-deterministic-password"
+	s1 := NewStore(password)
+	s1.Set("restart_key", "restart_value")
+
+	// Simulate restart
+	s2 := NewStore(password)
+	
+	// Manually inject the encrypted value from s1
+	s1.mu.RLock()
+	encrypted := s1.secrets["restart_key"].Value
+	s1.mu.RUnlock()
+
+	s2.secrets["restart_key"] = &Secret{Name: "restart_key", Value: encrypted}
+
+	// Try to get it from s2
+	sec, ok := s2.Get("restart_key")
+	if !ok {
+		t.Fatal("expected secret to exist after restart")
+	}
+	if sec.Value != "restart_value" {
+		t.Fatalf("expected restart_value, got %s", sec.Value)
+	}
+}

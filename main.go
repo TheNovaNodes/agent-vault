@@ -151,11 +151,7 @@ func NewStore(password string, audit ...*AuditLogger) *Store {
 	}
 	if password != "" {
 		s.sealed = true
-		s.sealedKey = make([]byte, 32)
-		if _, err := rand.Read(s.sealedKey); err != nil {
-			// fallback: derive from password (less secure but works without crypto/rand)
-			s.sealedKey = deriveKey(password, []byte("agent-vault-sealed-salt"))
-		}
+		s.sealedKey = deriveKey(password, []byte("agent-vault-sealed-salt"))
 	}
 	return s
 }
