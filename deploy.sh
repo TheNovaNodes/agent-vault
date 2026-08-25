@@ -11,9 +11,17 @@ ADMIN_TOKEN="${VAULT_ADMIN_TOKEN:-}"
 
 # Check TLS configuration
 CURL_OPTS="-sf"
-if grep -q "use_tls: true" "$PROJECT_DIR/config.yaml" 2>/dev/null; then
-    API="https://127.0.0.1:8301"
-    CURL_OPTS="-sfk"
+if [ -f "$PROJECT_DIR/config.yaml" ]; then
+    USE_TLS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PROJECT_DIR/config.yaml')).get('use_tls', False))" 2>/dev/null || echo "False")
+    if [ "$USE_TLS" = "True" ]; then
+        API="https://127.0.0.1:8301"
+        TLS_CERT=$(python3 -c "import yaml; print(yaml.safe_load(open('$PROJECT_DIR/config.yaml')).get('tls_cert_path', ''))" 2>/dev/null || echo "")
+        if [ -n "$TLS_CERT" ] && [ -f "$TLS_CERT" ]; then
+            CURL_OPTS="-sf --cacert $TLS_CERT"
+        else
+            CURL_OPTS="-sf"
+        fi
+    fi
 fi
 
 PASS=0

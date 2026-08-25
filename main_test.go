@@ -1153,3 +1153,45 @@ func TestHandleAccessO1Lookup(t *testing.T) {
 	}
 	cfg.mu.RUnlock()
 }
+
+func TestServerDevMode(t *testing.T) {
+	cfg := &Config{
+		ListenAddr: "127.0.0.1:0",
+		UseTLS:     false,
+		DevMode:    true,
+	}
+	srv := NewServer(NewStore(""), cfg, "")
+	// Should not error about TLS missing because DevMode is true
+	go srv.ListenAndServe()
+	time.Sleep(100 * time.Millisecond) // Give it time to start
+	if srv.srv != nil {
+		srv.srv.Close()
+	}
+
+	cfgProd := &Config{
+		ListenAddr: "127.0.0.1:0",
+		UseTLS:     false,
+		DevMode:    false,
+	}
+	srvProd := NewServer(NewStore(""), cfgProd, "")
+	err := srvProd.ListenAndServe()
+	if err == nil {
+		t.Fatal("expected error in production mode without TLS")
+	}
+	if err.Error() != "TLS is required in production" {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+
+	cfgProdFallback := &Config{
+		ListenAddr:  "127.0.0.1:0",
+		UseTLS:      true,
+		TLSCertPath: "non-existent.crt",
+		TLSKeyPath:  "non-existent.key",
+		DevMode:     false,
+	}
+	srvProdFallback := NewServer(NewStore(""), cfgProdFallback, "")
+	err = srvProdFallback.ListenAndServe()
+	if err == nil {
+		t.Fatal("expected error in production mode with missing certs")
+	}
+}

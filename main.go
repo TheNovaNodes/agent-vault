@@ -309,6 +309,7 @@ type Config struct {
 	UseTLS         bool                       `yaml:"use_tls"`
 	TLSCertPath    string                     `yaml:"tls_cert_path"`
 	TLSKeyPath     string                     `yaml:"tls_key_path"`
+	DevMode        bool                       `yaml:"-"`
 	AuditLog       *AuditLogger              `yaml:"-"`
 	cleanupStop    chan struct{}             `yaml:"-"`
 }
@@ -590,9 +591,19 @@ func (s *Server) ListenAndServe() error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	if s.config.UseTLS && s.config.TLSCertPath != "" && s.config.TLSKeyPath != "" {
+	if !s.config.DevMode {
+		if !s.config.UseTLS || s.config.TLSCertPath == "" || s.config.TLSKeyPath == "" {
+			return fmt.Errorf("TLS is required in production")
+		}
+	}
+
+	if s.config.UseTLS {
 		log.Printf("[api] listening on %s (TLS)", s.config.ListenAddr)
 		return s.srv.ListenAndServeTLS(s.config.TLSCertPath, s.config.TLSKeyPath)
+	}
+
+	if !s.config.DevMode {
+		return fmt.Errorf("HTTP fallback is disabled in production")
 	}
 
 	log.Printf("[api] listening on %s", s.config.ListenAddr)
@@ -2137,11 +2148,21 @@ func main() {
 		log.Fatal("Admin token not set (admin_token in config or VAULT_ADMIN_TOKEN env)")
 	}
 
-	if !*devMode {
+	cfg.DevMode = *devMode
+	if !cfg.DevMode {
 		if !cfg.UseTLS || cfg.TLSCertPath == "" || cfg.TLSKeyPath == "" {
 			log.Fatal("TLS is required in production")
 		}
 	}
+	if cfg.UseTLS {
+		if _, err := os.Stat(cfg.TLSCertPath); err != nil {
+			log.Fatalf("TLS cert not readable: %v", err)
+		}
+		if _, err := os.Stat(cfg.TLSKeyPath); err != nil {
+			log.Fatalf("TLS key not readable: %v", err)
+		}
+	}
+
 
 	store := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.AuditLog)
 	cfg.startCleanupWorker(time.Hour)
