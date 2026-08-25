@@ -2122,6 +2122,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
+	devMode := flag.Bool("dev", false, "Run in development mode (allows non-TLS)")
 	flag.Parse()
 
 	cfg, err := loadConfig(*configPath)
@@ -2134,6 +2135,12 @@ func main() {
 	}
 	if cfg.AdminToken == "" {
 		log.Fatal("Admin token not set (admin_token in config or VAULT_ADMIN_TOKEN env)")
+	}
+
+	if !*devMode {
+		if !cfg.UseTLS || cfg.TLSCertPath == "" || cfg.TLSKeyPath == "" {
+			log.Fatal("TLS is required in production")
+		}
 	}
 
 	store := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.AuditLog)

@@ -53,9 +53,9 @@ Fully compatible with Linux environments and can run as a standard systemd servi
    make build
    ```
 2. Create a `config.yaml` based on `config.yaml.example`.
-3. Start the server (with an optional password for sealed mode):
+3. Start the server (with an optional password for sealed mode). For development without TLS, you must pass `-dev`:
    ```bash
-   VAULT_PASSWORD="my-secure-password" ./agent-vault -config config.yaml
+   VAULT_PASSWORD="my-secure-password" ./agent-vault -config config.yaml -dev
    ```
 4. Health check:
    ```bash
