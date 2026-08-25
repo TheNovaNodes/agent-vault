@@ -562,6 +562,12 @@ func NewServer(s *Store, cfg *Config, path string) *Server {
 
 func (s *Server) isAdmin(r *http.Request) bool {
 	token := r.Header.Get("X-Vault-Token")
+	if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
 	if token != "" && s.config.AdminToken != "" {
 		return subtle.ConstantTimeCompare([]byte(token), []byte(s.config.AdminToken)) == 1
 	}
@@ -574,7 +580,7 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("/secrets", s.handleSecrets)
 	mux.HandleFunc("/secret/", s.handleSecretByName)
 	mux.HandleFunc("/export", s.handleExport)
-	mux.HandleFunc("/access/", s.handleAccess)
+	mux.HandleFunc("/access", s.handleAccess)
 	mux.HandleFunc("/projects", s.handleProjects)
 	mux.HandleFunc("/project/", s.handleProjectByID)
 	mux.HandleFunc("/audit", s.handleAudit)
@@ -784,7 +790,13 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenStr := strings.TrimPrefix(r.URL.Path, "/access/")
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+
 	if tokenStr == "" {
 		http.Error(w, "token required", http.StatusBadRequest)
 		return

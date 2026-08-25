@@ -510,7 +510,8 @@ func TestHandleAccessValid(t *testing.T) {
 		Revoked:    false,
 	}
 
-	req := httptest.NewRequest("GET", "/access/"+token, nil)
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 
@@ -531,7 +532,8 @@ func TestHandleAccessValid(t *testing.T) {
 func TestHandleAccessInvalidToken(t *testing.T) {
 	srv, _ := newTestServerForMain(NewStore(""))
 
-	req := httptest.NewRequest("GET", "/access/invalidtoken", nil)
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer invalidtoken")
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 
@@ -551,7 +553,8 @@ func TestHandleAccessRevokedToken(t *testing.T) {
 		Revoked:    true,
 	}
 
-	req := httptest.NewRequest("GET", "/access/"+token, nil)
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 
@@ -572,7 +575,8 @@ func TestHandleAccessExpired(t *testing.T) {
 		ExpiresAt:  time.Now().Add(-1 * time.Hour), // expired 1h ago
 	}
 
-	req := httptest.NewRequest("GET", "/access/"+token, nil)
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 
@@ -590,7 +594,8 @@ func TestHandleAccessSecretNotFound(t *testing.T) {
 		Revoked:    false,
 	}
 
-	req := httptest.NewRequest("GET", "/access/"+token, nil)
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 
@@ -602,19 +607,20 @@ func TestHandleAccessSecretNotFound(t *testing.T) {
 func TestHandleAccessEmptyToken(t *testing.T) {
 	srv, _ := newTestServerForMain(NewStore(""))
 
-	req := httptest.NewRequest("GET", "/access/", nil)
+	req := httptest.NewRequest("GET", "/access", nil)
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", w.Code)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
 	}
 }
 
 func TestHandleAccessMethodNotAllowed(t *testing.T) {
 	srv, _ := newTestServerForMain(NewStore(""))
 
-	req := httptest.NewRequest("POST", "/access/tok1", nil)
+	req := httptest.NewRequest("POST", "/access", nil)
+	req.Header.Set("Authorization", "Bearer tok1")
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 
@@ -806,7 +812,8 @@ func TestHandleAccessOneTimeToken(t *testing.T) {
 	}
 
 	// First access — should succeed
-	req := httptest.NewRequest("GET", "/access/"+token, nil)
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	srv.handleAccess(w, req)
 	if w.Code != http.StatusOK {
@@ -814,7 +821,8 @@ func TestHandleAccessOneTimeToken(t *testing.T) {
 	}
 
 	// Second access — token should be revoked (one-time)
-	req = httptest.NewRequest("GET", "/access/"+token, nil)
+	req = httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
 	w = httptest.NewRecorder()
 	srv.handleAccess(w, req)
 	if w.Code != http.StatusForbidden {
@@ -1134,7 +1142,8 @@ func TestHandleAccessO1Lookup(t *testing.T) {
 	srv := NewServer(store, cfg, "/tmp/test-config-o1.yaml")
 
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/access/mytoken123", nil)
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer mytoken123")
 	srv.handleAccess(rr, req)
 
 	if rr.Code != http.StatusOK {

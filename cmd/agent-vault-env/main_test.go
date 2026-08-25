@@ -30,7 +30,7 @@ func TestMain_NoToken(t *testing.T) {
 
 func TestAccessEndpoint(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.URL.Path, "/access/")
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token == "valid-token" {
 			json.NewEncoder(w).Encode(map[string]string{
 				"name":       "test_secret",
@@ -44,7 +44,9 @@ func TestAccessEndpoint(t *testing.T) {
 	defer srv.Close()
 
 	// Test valid token
-	resp, err := http.Get(srv.URL + "/access/valid-token")
+	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -70,7 +72,9 @@ func TestAccessEndpointInvalidToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/access/bad-token")
+	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req.Header.Set("Authorization", "Bearer bad-token")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -156,7 +160,7 @@ func TestExportFormatSimple(t *testing.T) {
 
 func TestProjectTokenResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.URL.Path, "/access/")
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token == "project-token-123" {
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"project":    "cheque-bot",
@@ -181,7 +185,9 @@ func TestProjectTokenResponse(t *testing.T) {
 	defer srv.Close()
 
 	// Test project token returns 200
-	resp, err := http.Get(srv.URL + "/access/project-token-123")
+	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req.Header.Set("Authorization", "Bearer project-token-123")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
@@ -219,7 +225,9 @@ func TestSingleSecretResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/access/some-token")
+	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}

@@ -109,7 +109,7 @@ func doRequest(addr, method, path, token string, body interface{}) (*http.Respon
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Vault-Token", token)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -249,7 +249,7 @@ func cmdExport(addr, token string) {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	req.Header.Set("X-Vault-Token", token)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
 
 	resp, err := client.Do(req)
 	if err != nil {
