@@ -142,7 +142,7 @@ type Store struct {
 
 // NewStore создаёт Store. Если password не пустой — включается sealed mode.
 // audit может быть nil — тогда логирование не ведётся.
-func NewStore(password string, audit ...*AuditLogger) *Store {
+func NewStore(password string, sealedSalt string, audit ...*AuditLogger) *Store {
 	s := &Store{
 		secrets: make(map[string]*Secret),
 	}
@@ -151,7 +151,11 @@ func NewStore(password string, audit ...*AuditLogger) *Store {
 	}
 	if password != "" {
 		s.sealed = true
-		s.sealedKey = deriveKey(password, []byte("agent-vault-sealed-salt"))
+		saltBytes, err := hex.DecodeString(sealedSalt)
+		if err != nil || len(saltBytes) == 0 {
+			saltBytes = []byte("agent-vault-sealed-salt") // fallback
+		}
+		s.sealedKey = deriveKey(password, saltBytes)
 	}
 	return s
 }
@@ -305,6 +309,7 @@ type Config struct {
 	UseTLS         bool                       `yaml:"use_tls"`
 	TLSCertPath    string                     `yaml:"tls_cert_path"`
 	TLSKeyPath     string                     `yaml:"tls_key_path"`
+	SealedSalt     string                     `yaml:"sealed_salt"`
 	AuditLog       *AuditLogger              `yaml:"-"`
 	cleanupStop    chan struct{}             `yaml:"-"`
 }
@@ -344,6 +349,12 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if envBot := os.Getenv("VAULT_BOT_TOKEN"); envBot != "" {
 		cfg.TGBotToken = envBot
+	}
+	if cfg.SealedSalt == "" {
+		salt := make([]byte, 16)
+		rand.Read(salt)
+		cfg.SealedSalt = hex.EncodeToString(salt)
+		_ = cfg.save(path)
 	}
 	// Purge dead tokens on every startup
 	cfg.mu.Lock()
@@ -2132,7 +2143,7 @@ func main() {
 		log.Fatal("Admin token not set (admin_token in config or VAULT_ADMIN_TOKEN env)")
 	}
 
-	store := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.AuditLog)
+	store := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.SealedSalt, cfg.AuditLog)
 	cfg.startCleanupWorker(time.Hour)
 
 	// Load secrets from encrypted snapshot if exists
@@ -2145,9 +2156,11 @@ func main() {
 				if decErr == nil {
 					var secrets map[string]*Secret
 					if json.Unmarshal(decrypted, &secrets) == nil {
+						store.mu.Lock()
 						for name, sec := range secrets {
-							store.Set(name, sec.Value)
+							store.secrets[name] = sec
 						}
+						store.mu.Unlock()
 					}
 				} else {
 					log.Printf("[main] snapshot decrypt failed (wrong password?): %v", decErr)

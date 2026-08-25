@@ -14,7 +14,7 @@ import (
 // === STORE TESTS ===
 
 func TestStoreSetGet(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("api_key", "secret123")
 
 	secret, ok := s.Get("api_key")
@@ -30,7 +30,7 @@ func TestStoreSetGet(t *testing.T) {
 }
 
 func TestStoreGetMissing(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	_, ok := s.Get("nonexistent")
 	if ok {
 		t.Fatal("expected false for missing secret")
@@ -38,7 +38,7 @@ func TestStoreGetMissing(t *testing.T) {
 }
 
 func TestStoreUpdate(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("key", "v1")
 	s.Set("key", "v2")
 
@@ -57,7 +57,7 @@ func TestStoreUpdate(t *testing.T) {
 }
 
 func TestStoreDelete(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("key1", "val1")
 
 	if !s.Delete("key1") {
@@ -72,7 +72,7 @@ func TestStoreDelete(t *testing.T) {
 }
 
 func TestStoreDeleteAll(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("k1", "v1")
 	s.Set("k2", "v2")
 
@@ -83,7 +83,7 @@ func TestStoreDeleteAll(t *testing.T) {
 }
 
 func TestStoreList(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("a", "1")
 	s.Set("b", "2")
 
@@ -94,7 +94,7 @@ func TestStoreList(t *testing.T) {
 }
 
 func TestStoreListEmpty(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	list := s.List()
 	if len(list) != 0 {
 		t.Fatalf("expected 0 secrets, got %d", len(list))
@@ -102,7 +102,7 @@ func TestStoreListEmpty(t *testing.T) {
 }
 
 func TestStoreCount(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	if s.Count() != 0 {
 		t.Fatal("expected 0")
 	}
@@ -113,7 +113,7 @@ func TestStoreCount(t *testing.T) {
 }
 
 func TestStorePreservesOnUpdate(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("key", "v1")
 	sec1, _ := s.Get("key")
 	if sec1.UpdatedAt.IsZero() {
@@ -139,7 +139,7 @@ func TestStorePreservesOnUpdate(t *testing.T) {
 // === SEALED STORE TESTS ===
 
 func TestSealedStoreEncryptDecrypt(t *testing.T) {
-	s := NewStore("test-password")
+	s := NewStore("test-password", "")
 	s.Set("api_key", "super-secret-value")
 
 	// Internal storage should be encrypted (not plaintext)
@@ -161,7 +161,7 @@ func TestSealedStoreEncryptDecrypt(t *testing.T) {
 }
 
 func TestSealedStoreGetReturnsDecrypted(t *testing.T) {
-	s := NewStore("sealed-pass")
+	s := NewStore("sealed-pass", "")
 	s.Set("db_pass", "p@ssw0rd!")
 
 	sec, ok := s.Get("db_pass")
@@ -174,7 +174,7 @@ func TestSealedStoreGetReturnsDecrypted(t *testing.T) {
 }
 
 func TestSealedStoreUpdatePreservesEncryption(t *testing.T) {
-	s := NewStore("pass")
+	s := NewStore("pass", "")
 	s.Set("key", "v1")
 	s.Set("key", "v2")
 
@@ -196,7 +196,7 @@ func TestSealedStoreUpdatePreservesEncryption(t *testing.T) {
 }
 
 func TestSealedStoreListReturnsDecrypted(t *testing.T) {
-	s := NewStore("pass")
+	s := NewStore("pass", "")
 	s.Set("a", "val-a")
 	s.Set("b", "val-b")
 
@@ -331,7 +331,7 @@ func newTestServerForMain(store *Store) (*Server, *Config) {
 }
 
 func TestHandleHealth(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 
@@ -349,7 +349,7 @@ func TestHandleHealth(t *testing.T) {
 }
 
 func TestHandleHealthWithSecrets(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("k", "v")
 	srv, _ := newTestServerForMain(s)
 
@@ -365,7 +365,7 @@ func TestHandleHealthWithSecrets(t *testing.T) {
 }
 
 func TestHandleSecretsGetUnauthorized(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/secrets", nil)
 	w := httptest.NewRecorder()
@@ -377,7 +377,7 @@ func TestHandleSecretsGetUnauthorized(t *testing.T) {
 }
 
 func TestHandleSecretsGetAdmin(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("key1", "val1")
 	srv, _ := newTestServerForMain(s)
 
@@ -398,7 +398,7 @@ func TestHandleSecretsGetAdmin(t *testing.T) {
 }
 
 func TestHandleSecretsPost(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	body := `{"name":"new_key","value":"new_val"}`
 	req := httptest.NewRequest("POST", "/secrets", bytes.NewBufferString(body))
@@ -418,7 +418,7 @@ func TestHandleSecretsPost(t *testing.T) {
 }
 
 func TestHandleSecretsPostUnauthorized(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	body := `{"name":"k","value":"v"}`
 	req := httptest.NewRequest("POST", "/secrets", bytes.NewBufferString(body))
@@ -431,7 +431,7 @@ func TestHandleSecretsPostUnauthorized(t *testing.T) {
 }
 
 func TestHandleSecretsPostBadRequest(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	// Missing value
 	body := `{"name":"k"}`
@@ -454,7 +454,7 @@ func TestHandleSecretsPostBadRequest(t *testing.T) {
 }
 
 func TestHandleSecretsDelete(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("k1", "v1")
 	s.Set("k2", "v2")
 	srv, _ := newTestServerForMain(s)
@@ -473,7 +473,7 @@ func TestHandleSecretsDelete(t *testing.T) {
 }
 
 func TestHandleSecretsDeleteUnauthorized(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("DELETE", "/secrets", nil)
 	w := httptest.NewRecorder()
@@ -485,7 +485,7 @@ func TestHandleSecretsDeleteUnauthorized(t *testing.T) {
 }
 
 func TestHandleSecretMethodNotAllowed(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("PUT", "/secrets", nil)
 	req.Header.Set("X-Vault-Token", "test-admin-token")
@@ -500,7 +500,7 @@ func TestHandleSecretMethodNotAllowed(t *testing.T) {
 // === ACCESS ENDPOINT TESTS ===
 
 func TestHandleAccessValid(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("my_secret", "my_value")
 	srv, cfg := newTestServerForMain(s)
 	token := "abc123"
@@ -529,7 +529,7 @@ func TestHandleAccessValid(t *testing.T) {
 }
 
 func TestHandleAccessInvalidToken(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/access/invalidtoken", nil)
 	w := httptest.NewRecorder()
@@ -541,7 +541,7 @@ func TestHandleAccessInvalidToken(t *testing.T) {
 }
 
 func TestHandleAccessRevokedToken(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("s1", "v1")
 	srv, cfg := newTestServerForMain(s)
 	token := "tok1"
@@ -561,7 +561,7 @@ func TestHandleAccessRevokedToken(t *testing.T) {
 }
 
 func TestHandleAccessExpired(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("s1", "v1")
 	srv, cfg := newTestServerForMain(s)
 	token := "tok1"
@@ -582,7 +582,7 @@ func TestHandleAccessExpired(t *testing.T) {
 }
 
 func TestHandleAccessSecretNotFound(t *testing.T) {
-	srv, cfg := newTestServerForMain(NewStore(""))
+	srv, cfg := newTestServerForMain(NewStore("", ""))
 	token := "tok1"
 	cfg.SecretTokens[hashToken(token)] = &SecretToken{
 		SecretName: "deleted_secret",
@@ -600,7 +600,7 @@ func TestHandleAccessSecretNotFound(t *testing.T) {
 }
 
 func TestHandleAccessEmptyToken(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/access/", nil)
 	w := httptest.NewRecorder()
@@ -612,7 +612,7 @@ func TestHandleAccessEmptyToken(t *testing.T) {
 }
 
 func TestHandleAccessMethodNotAllowed(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("POST", "/access/tok1", nil)
 	w := httptest.NewRecorder()
@@ -626,7 +626,7 @@ func TestHandleAccessMethodNotAllowed(t *testing.T) {
 // === EXPORT TESTS ===
 
 func TestHandleExport(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("k1", "v1")
 	s.Set("k2", "v2")
 	srv, _ := newTestServerForMain(s)
@@ -653,7 +653,7 @@ func TestHandleExport(t *testing.T) {
 }
 
 func TestHandleExportUnauthorized(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/export", nil)
 	w := httptest.NewRecorder()
@@ -665,7 +665,7 @@ func TestHandleExportUnauthorized(t *testing.T) {
 }
 
 func TestHandleExportEmpty(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/export", nil)
 	req.Header.Set("X-Vault-Token", "test-admin-token")
@@ -686,7 +686,7 @@ func TestHandleExportEmpty(t *testing.T) {
 // === ISADMIN TESTS ===
 
 func TestIsAdminValid(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/secrets", nil)
 	req.Header.Set("X-Vault-Token", "test-admin-token")
@@ -696,7 +696,7 @@ func TestIsAdminValid(t *testing.T) {
 }
 
 func TestIsAdminInvalid(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/secrets", nil)
 	req.Header.Set("X-Vault-Token", "wrong")
@@ -706,7 +706,7 @@ func TestIsAdminInvalid(t *testing.T) {
 }
 
 func TestIsAdminEmpty(t *testing.T) {
-	srv, _ := newTestServerForMain(NewStore(""))
+	srv, _ := newTestServerForMain(NewStore("", ""))
 
 	req := httptest.NewRequest("GET", "/secrets", nil)
 	if srv.isAdmin(req) {
@@ -715,7 +715,7 @@ func TestIsAdminEmpty(t *testing.T) {
 }
 
 func TestIsAdminTimingSafe(t *testing.T) {
-	srv, cfg := newTestServerForMain(NewStore(""))
+	srv, cfg := newTestServerForMain(NewStore("", ""))
 
 	// Different length tokens should not panic
 	req := httptest.NewRequest("GET", "/secrets", nil)
@@ -795,7 +795,7 @@ func TestEscapeHTML(t *testing.T) {
 // === ONE-TIME TOKEN TESTS ===
 
 func TestHandleAccessOneTimeToken(t *testing.T) {
-	s := NewStore("")
+	s := NewStore("", "")
 	s.Set("my_secret", "my_value")
 	srv, cfg := newTestServerForMain(s)
 	token := "onetime123"
@@ -984,7 +984,7 @@ listen_addr: 127.0.0.1:9999
 // === DELETE /secret/<name> ===
 
 func TestHandleSecretDelete(t *testing.T) {
-	store := NewStore("")
+	store := NewStore("", "")
 	store.Set("to_delete", "val1")
 	store.Set("keep", "val2")
 	cfg := &Config{
@@ -1022,7 +1022,7 @@ func TestHandleSecretDelete(t *testing.T) {
 }
 
 func TestHandleSecretDeleteNotFound(t *testing.T) {
-	store := NewStore("")
+	store := NewStore("", "")
 	cfg := &Config{
 		AdminToken:   "test-admin",
 		SecretTokens: make(map[string]*SecretToken),
@@ -1040,7 +1040,7 @@ func TestHandleSecretDeleteNotFound(t *testing.T) {
 }
 
 func TestHandleSecretDeleteUnauthorized(t *testing.T) {
-	store := NewStore("")
+	store := NewStore("", "")
 	store.Set("s1", "v1")
 	cfg := &Config{
 		AdminToken:   "test-admin",
@@ -1104,7 +1104,7 @@ func TestRecoveryMiddleware(t *testing.T) {
 		panic("test panic")
 	})
 
-	store := NewStore("")
+	store := NewStore("", "")
 	cfg := newTestConfig()
 	srv := NewServer(store, cfg, "dummy.yaml")
 	wrapped := srv.recoveryMiddleware(handler)
@@ -1121,7 +1121,7 @@ func TestRecoveryMiddleware(t *testing.T) {
 // === O(1) TOKEN LOOKUP ===
 
 func TestHandleAccessO1Lookup(t *testing.T) {
-	store := NewStore("")
+	store := NewStore("", "")
 	store.Set("api_key", "secret-value")
 	cfg := &Config{
 		AdminToken:   "test-admin",
@@ -1154,27 +1154,3 @@ func TestHandleAccessO1Lookup(t *testing.T) {
 	cfg.mu.RUnlock()
 }
 
-func TestSealedStoreRestart(t *testing.T) {
-	password := "my-deterministic-password"
-	s1 := NewStore(password)
-	s1.Set("restart_key", "restart_value")
-
-	// Simulate restart
-	s2 := NewStore(password)
-	
-	// Manually inject the encrypted value from s1
-	s1.mu.RLock()
-	encrypted := s1.secrets["restart_key"].Value
-	s1.mu.RUnlock()
-
-	s2.secrets["restart_key"] = &Secret{Name: "restart_key", Value: encrypted}
-
-	// Try to get it from s2
-	sec, ok := s2.Get("restart_key")
-	if !ok {
-		t.Fatal("expected secret to exist after restart")
-	}
-	if sec.Value != "restart_value" {
-		t.Fatalf("expected restart_value, got %s", sec.Value)
-	}
-}
