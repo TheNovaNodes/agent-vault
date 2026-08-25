@@ -36,6 +36,10 @@ if __name__ == "__main__":
             f.write(secrets.get('value', ''))
         os.chmod(secret_path, 0o600)
         
+        # Fallback cleanup: remove the file after 5 minutes if not consumed
+        import subprocess
+        subprocess.Popen(["bash", "-c", f"sleep 300 && rm -f {secret_path}"])
+        
         print("✅ MCP Vault Gateway: Секрет успешно загружен в защищенную память.")
         print("\n--- Открытые метаданные для LLM ---")
         if 'name' in secrets:
