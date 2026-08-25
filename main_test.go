@@ -17,8 +17,8 @@ func TestStoreSetGet(t *testing.T) {
 	s := NewStore("")
 	s.Set("api_key", "secret123")
 
-	secret, ok := s.Get("api_key")
-	if !ok {
+	secret, err := s.Get("api_key")
+	if err != nil {
 		t.Fatal("expected secret to exist")
 	}
 	if secret.Value != "secret123" {
@@ -31,8 +31,8 @@ func TestStoreSetGet(t *testing.T) {
 
 func TestStoreGetMissing(t *testing.T) {
 	s := NewStore("")
-	_, ok := s.Get("nonexistent")
-	if ok {
+	_, err := s.Get("nonexistent")
+	if err == nil {
 		t.Fatal("expected false for missing secret")
 	}
 }
@@ -42,8 +42,8 @@ func TestStoreUpdate(t *testing.T) {
 	s.Set("key", "v1")
 	s.Set("key", "v2")
 
-	sec, ok := s.Get("key")
-	if !ok {
+	sec, err := s.Get("key")
+	if err != nil {
 		t.Fatal("expected secret")
 	}
 	if sec.Value != "v2" {
@@ -63,7 +63,7 @@ func TestStoreDelete(t *testing.T) {
 	if !s.Delete("key1") {
 		t.Fatal("expected delete to return true")
 	}
-	if _, ok := s.Get("key1"); ok {
+	if _, err := s.Get("key1"); err == nil {
 		t.Fatal("expected secret to be deleted")
 	}
 	if s.Delete("key1") {
@@ -87,7 +87,7 @@ func TestStoreList(t *testing.T) {
 	s.Set("a", "1")
 	s.Set("b", "2")
 
-	list := s.List()
+	list, _ := s.List()
 	if len(list) != 2 {
 		t.Fatalf("expected 2 secrets, got %d", len(list))
 	}
@@ -95,7 +95,7 @@ func TestStoreList(t *testing.T) {
 
 func TestStoreListEmpty(t *testing.T) {
 	s := NewStore("")
-	list := s.List()
+	list, _ := s.List()
 	if len(list) != 0 {
 		t.Fatalf("expected 0 secrets, got %d", len(list))
 	}
@@ -151,8 +151,8 @@ func TestSealedStoreEncryptDecrypt(t *testing.T) {
 	}
 
 	// Get should decrypt transparently
-	secret, ok := s.Get("api_key")
-	if !ok {
+	secret, err := s.Get("api_key")
+	if err != nil {
 		t.Fatal("expected secret to exist")
 	}
 	if secret.Value != "super-secret-value" {
@@ -164,8 +164,8 @@ func TestSealedStoreGetReturnsDecrypted(t *testing.T) {
 	s := NewStore("sealed-pass")
 	s.Set("db_pass", "p@ssw0rd!")
 
-	sec, ok := s.Get("db_pass")
-	if !ok {
+	sec, err := s.Get("db_pass")
+	if err != nil {
 		t.Fatal("expected secret to exist")
 	}
 	if sec.Value != "p@ssw0rd!" {
@@ -178,8 +178,8 @@ func TestSealedStoreUpdatePreservesEncryption(t *testing.T) {
 	s.Set("key", "v1")
 	s.Set("key", "v2")
 
-	sec, ok := s.Get("key")
-	if !ok {
+	sec, err := s.Get("key")
+	if err != nil {
 		t.Fatal("expected secret to exist")
 	}
 	if sec.Value != "v2" {
@@ -200,7 +200,7 @@ func TestSealedStoreListReturnsDecrypted(t *testing.T) {
 	s.Set("a", "val-a")
 	s.Set("b", "val-b")
 
-	secrets := s.List()
+	secrets, _ := s.List()
 	if len(secrets) != 2 {
 		t.Fatalf("expected 2 secrets, got %d", len(secrets))
 	}
@@ -1004,10 +1004,10 @@ func TestHandleSecretDelete(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	if _, ok := store.Get("to_delete"); ok {
+	if _, err := store.Get("to_delete"); err == nil {
 		t.Fatal("secret should be deleted from store")
 	}
-	if _, ok := store.Get("keep"); !ok {
+	if _, err := store.Get("keep"); err != nil {
 		t.Fatal("other secret should remain")
 	}
 
@@ -1055,7 +1055,7 @@ func TestHandleSecretDeleteUnauthorized(t *testing.T) {
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rr.Code)
 	}
-	if _, ok := store.Get("s1"); !ok {
+	if _, err := store.Get("s1"); err != nil {
 		t.Fatal("secret should not be deleted without auth")
 	}
 }
@@ -1152,4 +1152,26 @@ func TestHandleAccessO1Lookup(t *testing.T) {
 		t.Fatal("one-time token should be deleted after use")
 	}
 	cfg.mu.RUnlock()
+}
+
+func TestGetDecryptionFailure(t *testing.T) {
+	s := NewStore("password123")
+	// Bypass Set to write corrupted ciphertext
+	s.mu.Lock()
+	s.secrets["corrupted_key"] = &Secret{
+		Name:  "corrupted_key",
+		Value: "this_is_not_a_valid_hex_or_ciphertext",
+	}
+	s.mu.Unlock()
+
+	sec, err := s.Get("corrupted_key")
+	if err == nil {
+		t.Fatal("expected error when decrypting corrupted data, got nil")
+	}
+	if err == ErrSecretNotFound {
+		t.Fatal("expected decryption error, got ErrSecretNotFound")
+	}
+	if sec.Value != "" {
+		t.Fatalf("expected empty secret value on error, got %s", sec.Value)
+	}
 }
