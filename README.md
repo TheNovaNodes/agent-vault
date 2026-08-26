@@ -5,15 +5,10 @@ protocol: http
 primary_capability: secret-management
 requires: go, telegram-bot-api
 works_with: agent-vault-env, agent-vault-cli
-last_verified: 2026-08-21
-```
-
-# Agent Vault (agent-vault)
-A lightweight, secure, and isolated secrets manager designed specifically for AI agents, featuring Telegram-based management, ChaCha20-Poly1305 encryption, and simple HTTP APIs.
-
-## Status and Last Verified Date
+last_verified: 2026-08-26
+---
 Status: Active / Core Component
-Last Verified: 2026-08-21
+Last Verified: 2026-08-26
 
 ## What it does / does not do
 **What it does:**
@@ -76,7 +71,7 @@ Since Agent Vault provides an HTTP API rather than native MCP tools, here is the
 | Endpoint | Method | Requires Auth | Side Effects | Description |
 |----------|--------|---------------|--------------|-------------|
 | `/health` | GET | None | None | Returns vault status and uptime. |
-| `/access/{token}` | GET | None (Token in URL) | Audit Log | Retrieves a single secret or all project secrets. |
+| `/access` | GET | Token in Header (`Authorization: Bearer <token>`) | Audit Log | Retrieves secret or project secrets. |
 | `/secrets` | GET | Admin Token | None | Lists all secrets. |
 | `/secrets` | POST | Admin Token | State Mutation | Creates or updates a secret. |
 | `/secret/{name}` | GET | Admin Token | None | Retrieves a specific secret by name. |
