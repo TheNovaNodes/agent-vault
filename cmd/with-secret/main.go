@@ -7,9 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"regexp"
 	"sort"
-	"strings"
 	"sync"
 	"syscall"
 )
@@ -23,13 +21,13 @@ type StreamRedactor struct {
 	mu     sync.Mutex
 }
 
-func NewStreamRedactor(target io.Writer, tokens []string) *StreamRedactor {
+func NewStreamRedactor(target io.Writer, tokens [][]byte) *StreamRedactor {
 	var valid [][]byte
 	maxL := 0
 	for _, t := range tokens {
-		t = strings.TrimSpace(t)
+		t = bytes.TrimSpace(t)
 		if len(t) > 4 {
-			valid = append(valid, []byte(t))
+			valid = append(valid, t)
 			if len(t) > maxL {
 				maxL = len(t)
 			}
@@ -38,7 +36,7 @@ func NewStreamRedactor(target io.Writer, tokens []string) *StreamRedactor {
 	
 	if len(valid) == 0 {
 		for _, t := range tokens {
-			valid = append(valid, []byte(t))
+			valid = append(valid, t)
 			if len(t) > maxL {
 				maxL = len(t)
 			}
@@ -107,9 +105,13 @@ func (r *StreamRedactor) processBuffer(flushAll bool) {
 }
 
 func main() {
-	if len(os.Args) < 5 || os.Args[2] != "--env" {
-		fmt.Fprintf(os.Stderr, "Usage: with-secret <pointer_id> --env <VAR_NAME> -- <command...>\n")
-		os.Exit(1)
+	os.Exit(run())
+}
+
+func run() int {
+	if len(os.Args) < 5 || os.Args[2] != "--secret-path-env" {
+		fmt.Fprintf(os.Stderr, "Usage: with-secret <pointer_id> --secret-path-env <VAR_NAME> -- <command...>\n")
+		return 1
 	}
 
 	pointerID := os.Args[1]
@@ -120,19 +122,33 @@ func main() {
 	secretBytes, err := os.ReadFile(secretPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error: Secret pointer %s not found.\n", pointerID)
-		os.Exit(1)
+		return 1
 	}
-	secretValue := string(secretBytes)
+	
+	// Ensure the secret is only kept as long as needed by deleting it from shm after command finishes
+	defer os.Remove(secretPath)
 
 	// Tokenize secret
-	re := regexp.MustCompile(`[\s\n]+`)
-	rawTokens := re.Split(secretValue, -1)
+	rawTokens := bytes.Fields(secretBytes)
 	if len(rawTokens) == 0 {
-		rawTokens = []string{secretValue}
+		rawTokens = [][]byte{secretBytes}
 	}
 
+	// Zeroize memory on exit
+	defer func() {
+		for i := range secretBytes {
+			secretBytes[i] = 0
+		}
+		for _, t := range rawTokens {
+			for i := range t {
+				t[i] = 0
+			}
+		}
+	}()
+
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%s", varName, secretValue))
+	// Pass the path instead of the raw secret
+	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%s", varName, secretPath))
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // Process group for signals
 
 	outRedactor := NewStreamRedactor(os.Stdout, rawTokens)
@@ -143,7 +159,7 @@ func main() {
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Failed to start command: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// Signal forwarding
@@ -163,9 +179,10 @@ func main() {
 
 	if err != nil {
 		if exiterr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exiterr.ExitCode())
+			return exiterr.ExitCode()
 		}
-		os.Exit(1)
+		return 1
 	}
-	os.Exit(0)
+	return 0
+
 }
