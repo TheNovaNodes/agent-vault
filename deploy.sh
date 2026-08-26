@@ -2,8 +2,9 @@
 # deploy.sh — build, deploy, and verify agent-vault
 set -euo pipefail
 
-PROJECT_DIR="/root/LabDoctorM/projects/agent-vault"
-BIN="$PROJECT_DIR/agent-vault"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEV_BIN="$PROJECT_DIR/agent-vault"
+PROD_BIN="/usr/local/bin/agent-vault"
 API="http://127.0.0.1:8301"
 
 # Токен из переменной окружения или config.yaml
@@ -19,31 +20,31 @@ if [ -z "$ADMIN_TOKEN" ]; then
     echo "⚠️  VAULT_ADMIN_TOKEN not set — admin API checks will be skipped"
 fi
 
-echo "=== [1/5] Build ==="
+echo "=== [1/5] Build & Prepare Production Binary ==="
 cd "$PROJECT_DIR"
 export PATH=/usr/local/go/bin:$PATH
-# Backup current binary for rollback
-if [ -f "$BIN" ]; then
-    cp "$BIN" "$BIN.bak"
-    echo "  Backed up current binary"
+if ! command -v go &> /dev/null; then
+    fail "Go is not installed or not in PATH"
+fi
+# Backup current production binary for rollback
+if [ -f "$PROD_BIN" ]; then
+    cp "$PROD_BIN" "$PROD_BIN.bak"
+    echo "  Backed up current production binary to $PROD_BIN.bak"
 fi
 go build -o agent-vault . 2>&1 && ok "Build OK" || fail "Build failed"
-echo "  Binary: $(ls -lh "$BIN" | awk '{print $5, $6, $7, $8}')"
 
-echo ""
-echo "=== [2/5] Deploy ==="
 # Save current state for rollback
 WAS_ACTIVE=false
 if systemctl is-active --quiet agent-vault 2>/dev/null; then
     WAS_ACTIVE=true
-    echo "  Service was active — will rollback on failure"
-fi
-
-if systemctl is-active --quiet agent-vault 2>/dev/null; then
     systemctl stop agent-vault
-    echo "  Stopped old service"
+    echo "  Stopped running service before binary replacement"
 fi
-sleep 1
+cp "$DEV_BIN" "$PROD_BIN" && ok "Copied binary to $PROD_BIN" || fail "Failed to copy binary to /usr/local/bin"
+echo "  Production Binary: $(ls -lh "$PROD_BIN" | awk '{print $5, $6, $7, $8}')"
+
+echo ""
+echo "=== [2/5] Deploy ==="
 systemctl start agent-vault && ok "Service started" || fail "Service start failed"
 sleep 2
 
@@ -133,10 +134,10 @@ if [ "$API_FLOW_OK" = false ] && [ "$WAS_ACTIVE" = true ]; then
     echo "  ⚠️  API flow test failed — rolling back..."
     systemctl stop agent-vault
     sleep 1
-    # Restore previous binary if backup exists
-    if [ -f "$BIN.bak" ]; then
-        cp "$BIN.bak" "$BIN"
-        echo "  ↩️  Restored previous binary"
+    # Restore previous production binary if backup exists
+    if [ -f "$PROD_BIN.bak" ]; then
+        cp "$PROD_BIN.bak" "$PROD_BIN"
+        echo "  ↩️  Restored previous production binary"
     fi
     systemctl start agent-vault
     sleep 2

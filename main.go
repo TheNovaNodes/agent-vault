@@ -562,6 +562,12 @@ func NewServer(s *Store, cfg *Config, path string) *Server {
 
 func (s *Server) isAdmin(r *http.Request) bool {
 	token := r.Header.Get("X-Vault-Token")
+	if token == "" {
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token = strings.TrimPrefix(authHeader, "Bearer ")
+		}
+	}
 	if token != "" && s.config.AdminToken != "" {
 		return subtle.ConstantTimeCompare([]byte(token), []byte(s.config.AdminToken)) == 1
 	}
@@ -574,7 +580,7 @@ func (s *Server) ListenAndServe() error {
 	mux.HandleFunc("/secrets", s.handleSecrets)
 	mux.HandleFunc("/secret/", s.handleSecretByName)
 	mux.HandleFunc("/export", s.handleExport)
-	mux.HandleFunc("/access/", s.handleAccess)
+	mux.HandleFunc("/access", s.handleAccess)
 	mux.HandleFunc("/projects", s.handleProjects)
 	mux.HandleFunc("/project/", s.handleProjectByID)
 	mux.HandleFunc("/audit", s.handleAudit)
@@ -784,7 +790,13 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenStr := strings.TrimPrefix(r.URL.Path, "/access/")
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+
 	if tokenStr == "" {
 		http.Error(w, "token required", http.StatusBadRequest)
 		return
@@ -1357,7 +1369,7 @@ func cancelKB() tgbotapi.InlineKeyboardMarkup {
 func (b *Bot) sendMainMenu(chatID int64) {
 	b.resetSession(chatID)
 	secrets := b.store.List()
-	text := fmt.Sprintf("🔐 <b>Lab Vault</b>\n\n📋 Секретов: %d\n\nВыберите действие:", len(secrets))
+	text := fmt.Sprintf("🎭 <b>Lab Vault Agent OS</b>\n<i>Master AI Security Suite</i>\n\n🛡 <b>Статус:</b> 🟢 ACTIVE (RAM Sealed Mode)\n📋 <b>Секретов в хранилище:</b> %d\n\nВыберите действие из меню ниже:", len(secrets))
 	sendWithMenu(b.api, chatID, text, mainMenuKB())
 }
 
@@ -1553,11 +1565,21 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 	}
 	b.config.mu.RUnlock()
 
-	text := fmt.Sprintf("🔒 <b>%s</b>\n\nЗначение:\n<pre>%s</pre>\n\n📅 Обновлён: %s\n🔑 Активных токенов: %d",
+	categoryIcon := "🔑"
+	if strings.Contains(strings.ToLower(name), "agent") || strings.Contains(strings.ToLower(name), "jules") || strings.Contains(strings.ToLower(name), "manus") {
+		categoryIcon = "🤖"
+	} else if strings.Contains(strings.ToLower(name), "db") || strings.Contains(strings.ToLower(name), "postgres") {
+		categoryIcon = "🗄"
+	} else if strings.Contains(strings.ToLower(name), "master") || strings.Contains(strings.ToLower(name), "admin") {
+		categoryIcon = "🛡"
+	}
+
+	text := fmt.Sprintf("🛡 <b>LAB VAULT SECRET CARD</b>\n──────────────────────────────\n%s <b>Имя:</b> <code>%s</code>\n🔒 <b>Шифрование:</b> ChaCha20-Poly1305 (RAM-Only)\n🔑 <b>Активных токенов:</b> %d\n📅 <b>Обновлён:</b> %s\n──────────────────────────────\n📋 <b>Значение:</b>\n<pre>%s</pre>",
+		categoryIcon,
 		escapeHTML(secret.Name),
-		escapeHTML(secret.Value),
-		escapeHTML(secret.UpdatedAt.Format("02.01.2006 15:04")),
-		tokenCount)
+		tokenCount,
+		escapeHTML(secret.UpdatedAt.Format("02.01.2006 15:04:05 UTC")),
+		escapeHTML(secret.Value))
 
 	var rows [][]tgbotapi.InlineKeyboardButton
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -1623,8 +1645,8 @@ func (b *Bot) createSecretToken(chatID int64, name string) {
 	}
 
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s http://%s/access/%s</pre>",
-		escapeHTML(name), token, ttlStr, addr, token)
+	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s -H \"Authorization: Bearer %s\" http://%s/access</pre>",
+		escapeHTML(name), token, ttlStr, token, addr)
 
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -1835,8 +1857,8 @@ func (b *Bot) createProjectToken(chatID int64, id string) {
 		ttlStr = escapeHTML(expires.Format("02.01.2006 15:04"))
 	}
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s http://%s/access/%s</pre>",
-		escapeHTML(project.Name), token, ttlStr, addr, token)
+	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H \"Authorization: Bearer %s\" http://%s/access</pre>",
+		escapeHTML(project.Name), token, ttlStr, token, addr)
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("◀️ К проекту", "project_view:"+id),
@@ -2103,8 +2125,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 			b.resetSession(chatID)
 			sendWithMenu(b.api, chatID,
-				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s http://%s/access/%s</pre>",
-					escapeHTML(sess.name), token, ttlStr, addr, token),
+				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H \"Authorization: Bearer %s\" http://%s/access</pre>",
+					escapeHTML(sess.name), token, ttlStr, token, addr),
 				mainMenuKB())
 		} else {
 			b.resetSession(chatID)

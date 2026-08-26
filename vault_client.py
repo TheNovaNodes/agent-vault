@@ -5,9 +5,10 @@ import urllib.error
 import os
 
 def get_secret_from_vault(token):
-    url = f"http://127.0.0.1:8301/access/{token}"
+    url = f"http://127.0.0.1:8301/access"
     try:
         req = urllib.request.Request(url)
+        req.add_header("Authorization", f"Bearer {token}")
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode())
             return data

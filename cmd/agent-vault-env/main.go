@@ -34,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	url := fmt.Sprintf("%s/access/%s", *vaultAddr, *token)
+	url := fmt.Sprintf("%s/access", *vaultAddr)
 	client := &http.Client{Timeout: *timeout}
 
 	var resp *http.Response
@@ -46,7 +46,14 @@ func main() {
 			time.Sleep(wait)
 		}
 
-		resp, err = client.Get(url)
+		req, reqErr := http.NewRequest(http.MethodGet, url, nil)
+		if reqErr != nil {
+			err = reqErr
+			break
+		}
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", *token))
+
+		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
 			break
 		}

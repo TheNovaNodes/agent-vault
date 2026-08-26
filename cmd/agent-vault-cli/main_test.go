@@ -39,7 +39,7 @@ func newTestCLIServer() *httptest.Server {
 	})
 
 	mux.HandleFunc("/secrets", func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("X-Vault-Token")
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token != "test-admin" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -80,7 +80,7 @@ func newTestCLIServer() *httptest.Server {
 	})
 
 	mux.HandleFunc("/secret/", func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("X-Vault-Token")
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token != "test-admin" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -115,7 +115,7 @@ func newTestCLIServer() *httptest.Server {
 	})
 
 	mux.HandleFunc("/export", func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("X-Vault-Token")
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if token != "test-admin" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
