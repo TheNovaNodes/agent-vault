@@ -47,8 +47,6 @@ if [ -f "$PROD_BIN" ]; then
     echo "  Backed up current production binary to $PROD_BIN.bak"
 fi
 go build -o agent-vault . 2>&1 && ok "Build OK" || fail "Build failed"
-
-# Save current state for rollback
 WAS_ACTIVE=false
 if systemctl is-active --quiet agent-vault 2>/dev/null; then
     WAS_ACTIVE=true
