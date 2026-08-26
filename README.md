@@ -59,7 +59,7 @@ Fully compatible with Linux environments and can run as a standard systemd servi
    ```
 4. Health check:
    ```bash
-   curl http://127.0.0.1:8301/health
+   curl https://127.0.0.1:8301/health
    ```
 
 ## Configuration and environment variables
@@ -114,7 +114,7 @@ An agent using an HTTP-based MCP client can fetch secrets using their provisione
 ```json
 {
   "method": "http.get",
-  "url": "http://127.0.0.1:8301/access/MY_TOKEN",
+  "url": "https://127.0.0.1:8301/access/MY_TOKEN",
   "headers": {}
 }
 ```

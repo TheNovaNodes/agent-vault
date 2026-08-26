@@ -138,7 +138,7 @@ func makeMessage(chatID int64, text string) *tgbotapi.Message {
 // === CALLBACK: MAIN MENU ===
 
 func TestCallbackCreate(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -154,7 +154,7 @@ func TestCallbackCreate(t *testing.T) {
 }
 
 func TestCallbackListEmpty(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -167,7 +167,7 @@ func TestCallbackListEmpty(t *testing.T) {
 }
 
 func TestCallbackListWithSecrets(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("api_key", "val123")
 	store.Set("db_pass", "pass456")
 	cfg := newTestConfig()
@@ -190,7 +190,7 @@ func TestCallbackListWithSecrets(t *testing.T) {
 }
 
 func TestCallbackWipeSecrets(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("k", "v")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
@@ -204,7 +204,7 @@ func TestCallbackWipeSecrets(t *testing.T) {
 }
 
 func TestCallbackWipeSecretsYes(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("k1", "v1")
 	store.Set("k2", "v2")
 	cfg := newTestConfig()
@@ -223,7 +223,7 @@ func TestCallbackWipeSecretsYes(t *testing.T) {
 }
 
 func TestCallbackWipeTokens(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -236,7 +236,7 @@ func TestCallbackWipeTokens(t *testing.T) {
 }
 
 func TestCallbackWipeTokensYes(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	cfg.SecretTokens[hashToken("tok1")] = &SecretToken{SecretName: "s1", Token: hashToken("tok1")}
 	cfg.SecretTokens[hashToken("tok2")] = &SecretToken{SecretName: "s2", Token: hashToken("tok2")}
@@ -255,7 +255,7 @@ func TestCallbackWipeTokensYes(t *testing.T) {
 }
 
 func TestCallbackCancel(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -273,7 +273,7 @@ func TestCallbackCancel(t *testing.T) {
 // === CALLBACK: SECRET VIEW ===
 
 func TestCallbackViewSecret(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("my_secret", "my_value")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
@@ -294,7 +294,7 @@ func TestCallbackViewSecret(t *testing.T) {
 }
 
 func TestCallbackViewSecretNotFound(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -309,7 +309,7 @@ func TestCallbackViewSecretNotFound(t *testing.T) {
 // === CALLBACK: TOKEN CREATION ===
 
 func TestCallbackTokenCreate(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("s1", "v1")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
@@ -332,7 +332,7 @@ func TestCallbackTokenCreate(t *testing.T) {
 }
 
 func TestCallbackTokenCreateSecretNotFound(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -347,7 +347,7 @@ func TestCallbackTokenCreateSecretNotFound(t *testing.T) {
 // === CALLBACK: REVOKE TOKENS ===
 
 func TestCallbackRevokeTokens(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("s1", "v1")
 	cfg := newTestConfig()
 	cfg.SecretTokens[hashToken("tok1")] = &SecretToken{SecretName: "s1", Token: hashToken("tok1"), Revoked: false}
@@ -380,7 +380,7 @@ func TestCallbackRevokeTokens(t *testing.T) {
 // === CALLBACK: DELETE SECRET ===
 
 func TestCallbackDeleteSecret(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("to_delete", "val")
 	cfg := newTestConfig()
 	cfg.SecretTokens[hashToken("tok1")] = &SecretToken{SecretName: "to_delete", Token: hashToken("tok1"), Revoked: false}
@@ -402,7 +402,7 @@ func TestCallbackDeleteSecret(t *testing.T) {
 }
 
 func TestCallbackDeleteSecretNotFound(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -417,7 +417,7 @@ func TestCallbackDeleteSecretNotFound(t *testing.T) {
 // === CALLBACK: EXPORT ===
 
 func TestCallbackExport(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("k1", "v1")
 	store.Set("k2", "v2")
 	cfg := newTestConfig()
@@ -435,7 +435,7 @@ func TestCallbackExport(t *testing.T) {
 }
 
 func TestCallbackExportEmpty(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -450,7 +450,7 @@ func TestCallbackExportEmpty(t *testing.T) {
 // === CALLBACK: BACK ===
 
 func TestCallbackBack(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("k1", "v1")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
@@ -467,7 +467,7 @@ func TestCallbackBack(t *testing.T) {
 // === CALLBACK: UNKNOWN ===
 
 func TestCallbackUnknown(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -486,7 +486,7 @@ func TestCallbackUnknown(t *testing.T) {
 // === FSM: MESSAGE HANDLER ===
 
 func TestFSMStart(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -499,7 +499,7 @@ func TestFSMStart(t *testing.T) {
 }
 
 func TestFSMCancel(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -519,7 +519,7 @@ func TestFSMCancel(t *testing.T) {
 }
 
 func TestFSMDefaultShowsMenu(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -534,7 +534,7 @@ func TestFSMDefaultShowsMenu(t *testing.T) {
 // === FSM: CREATE SECRET FLOW ===
 
 func TestFSMCreateStep1_Name(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -557,7 +557,7 @@ func TestFSMCreateStep1_Name(t *testing.T) {
 }
 
 func TestFSMCreateStep1_EmptyName(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -577,7 +577,7 @@ func TestFSMCreateStep1_EmptyName(t *testing.T) {
 }
 
 func TestFSMCreateStep1_DuplicateName(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	store.Set("existing", "val")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
@@ -598,7 +598,7 @@ func TestFSMCreateStep1_DuplicateName(t *testing.T) {
 }
 
 func TestFSMCreateStep2_Value(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -634,7 +634,7 @@ func TestFSMCreateStep2_Value(t *testing.T) {
 }
 
 func TestFSMCreateStep2_EmptyValue(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -655,7 +655,7 @@ func TestFSMCreateStep2_EmptyValue(t *testing.T) {
 }
 
 func TestFSMCreateFullFlow(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -691,7 +691,7 @@ func TestFSMCreateFullFlow(t *testing.T) {
 // === SESSION ISOLATION ===
 
 func TestSessionIsolation(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, _ := newTestBot(store, cfg)
 
@@ -711,7 +711,7 @@ func TestSessionIsolation(t *testing.T) {
 }
 
 func TestResetSession(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, _ := newTestBot(store, cfg)
 
@@ -729,7 +729,7 @@ func TestResetSession(t *testing.T) {
 // === CONCURRENCY ===
 
 func TestConcurrentSecretCreation(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	cfg.TGAdminID = 0 // allow all chats for concurrency test
 	bot, _ := newTestBot(store, cfg)
@@ -759,7 +759,7 @@ func TestConcurrentSecretCreation(t *testing.T) {
 // === TG ADMIN ID CHECK ===
 
 func TestHandleMessage_NonAdminRejected(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	cfg.TGAdminID = 100
 	bot, api := newTestBot(store, cfg)
@@ -774,7 +774,7 @@ func TestHandleMessage_NonAdminRejected(t *testing.T) {
 }
 
 func TestHandleMessage_AdminAllowed(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	cfg.TGAdminID = 100
 	bot, api := newTestBot(store, cfg)
@@ -792,7 +792,7 @@ func TestHandleMessage_AdminAllowed(t *testing.T) {
 }
 
 func TestHandleMessage_NoAdminIDAllowsAll(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	cfg.TGAdminID = 0 // 0 = not set
 	bot, api := newTestBot(store, cfg)
@@ -808,7 +808,7 @@ func TestHandleMessage_NoAdminIDAllowsAll(t *testing.T) {
 // === PROJECT TESTS ===
 
 func TestCallback_ProjectAddSecret(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -838,7 +838,7 @@ func TestCallback_ProjectAddSecret(t *testing.T) {
 }
 
 func TestCallback_ProjectAddSecret_Duplicate(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -858,7 +858,7 @@ func TestCallback_ProjectAddSecret_Duplicate(t *testing.T) {
 }
 
 func TestCallback_ProjectAddSecret_NotFound(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -876,7 +876,7 @@ func TestCallback_ProjectAddSecret_NotFound(t *testing.T) {
 }
 
 func TestCallback_ProjectReplaceSecrets(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -910,7 +910,7 @@ func TestCallback_ProjectReplaceSecrets(t *testing.T) {
 }
 
 func TestCallback_ProjectReplaceSecrets_InvalidSecret(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -930,7 +930,7 @@ func TestCallback_ProjectReplaceSecrets_InvalidSecret(t *testing.T) {
 }
 
 func TestCallback_ProjectReplaceSecrets_ClearAll(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 
@@ -954,7 +954,7 @@ func TestCallback_ProjectReplaceSecrets_ClearAll(t *testing.T) {
 }
 
 func TestCallback_ProjectView_ShowsSecrets(t *testing.T) {
-	store := NewStore("", "")
+	store := MustNewStore("", "")
 	cfg := newTestConfig()
 	bot, api := newTestBot(store, cfg)
 

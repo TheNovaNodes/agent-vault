@@ -142,7 +142,7 @@ type Store struct {
 
 // NewStore создаёт Store. Если password не пустой — включается sealed mode.
 // audit может быть nil — тогда логирование не ведётся.
-func NewStore(password string, sealedSalt string, audit ...*AuditLogger) *Store {
+func NewStore(password string, sealedSalt string, audit ...*AuditLogger) (*Store, error) {
 	s := &Store{
 		secrets: make(map[string]*Secret),
 	}
@@ -153,11 +153,11 @@ func NewStore(password string, sealedSalt string, audit ...*AuditLogger) *Store 
 		s.sealed = true
 		saltBytes, err := hex.DecodeString(sealedSalt)
 		if err != nil || len(saltBytes) == 0 {
-			saltBytes = []byte("agent-vault-sealed-salt") // fallback
+			return nil, fmt.Errorf("invalid or empty sealed salt")
 		}
 		s.sealedKey = deriveKey(password, saltBytes)
 	}
-	return s
+	return s, nil
 }
 
 // sealedEncrypt шифрует plaintext через ChaCha20-Poly1305 с sealedKey.
@@ -352,9 +352,13 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if cfg.SealedSalt == "" {
 		salt := make([]byte, 16)
-		rand.Read(salt)
+		if _, err := rand.Read(salt); err != nil {
+			return nil, fmt.Errorf("failed to generate salt: %w", err)
+		}
 		cfg.SealedSalt = hex.EncodeToString(salt)
-		_ = cfg.save(path)
+		if err := cfg.save(path); err != nil {
+			return nil, fmt.Errorf("failed to save generated salt: %w", err)
+		}
 	}
 	// Purge dead tokens on every startup
 	cfg.mu.Lock()
@@ -388,6 +392,13 @@ func (c *Config) startCleanupWorker(interval time.Duration) {
 // stopCleanupWorker останавливает background cleanup goroutine.
 func (c *Config) stopCleanupWorker() {
 	close(c.cleanupStop)
+}
+
+func (c *Config) URLScheme() string {
+	if c.UseTLS {
+		return "https"
+	}
+	return "http"
 }
 
 func (c *Config) save(path string) error {
@@ -1630,8 +1641,8 @@ func (b *Bot) createSecretToken(chatID int64, name string) {
 	}
 
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s http://%s/access/%s</pre>",
-		escapeHTML(name), token, ttlStr, addr, token)
+	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s %s://%s/access/%s</pre>",
+		escapeHTML(name), token, ttlStr, b.config.URLScheme(), addr, token)
 
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -1842,8 +1853,8 @@ func (b *Bot) createProjectToken(chatID int64, id string) {
 		ttlStr = escapeHTML(expires.Format("02.01.2006 15:04"))
 	}
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s http://%s/access/%s</pre>",
-		escapeHTML(project.Name), token, ttlStr, addr, token)
+	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s %s://%s/access/%s</pre>",
+		escapeHTML(project.Name), token, ttlStr, b.config.URLScheme(), addr, token)
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("◀️ К проекту", "project_view:"+id),
@@ -2110,8 +2121,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 			b.resetSession(chatID)
 			sendWithMenu(b.api, chatID,
-				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s http://%s/access/%s</pre>",
-					escapeHTML(sess.name), token, ttlStr, addr, token),
+				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s %s://%s/access/%s</pre>",
+					escapeHTML(sess.name), token, ttlStr, b.config.URLScheme(), addr, token),
 				mainMenuKB())
 		} else {
 			b.resetSession(chatID)
@@ -2143,7 +2154,10 @@ func main() {
 		log.Fatal("Admin token not set (admin_token in config or VAULT_ADMIN_TOKEN env)")
 	}
 
-	store := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.SealedSalt, cfg.AuditLog)
+	store, err := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.SealedSalt, cfg.AuditLog)
+	if err != nil {
+		log.Fatalf("failed to initialize store: %v", err)
+	}
 	cfg.startCleanupWorker(time.Hour)
 
 	// Load secrets from encrypted snapshot if exists
