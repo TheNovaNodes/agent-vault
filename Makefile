@@ -64,7 +64,7 @@ run: $(BINARY) ## Запуск сервера
 dev: $(BINARY) ## Запуск в режиме разработки (с env override)
 	VAULT_BOT_TOKEN=$${VAULT_BOT_TOKEN} \
 	VAULT_ADMIN_TOKEN=$${VAULT_ADMIN_TOKEN} \
-	./$(BINARY) -config $(CONFIG)
+	./$(BINARY) -config $(CONFIG) -dev
 
 # === Clean ===
 clean: ## Очистка артефактов сборки

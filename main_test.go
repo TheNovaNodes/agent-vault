@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
+	"runtime"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -1156,16 +1158,42 @@ func TestHandleAccessO1Lookup(t *testing.T) {
 
 func TestServerDevMode(t *testing.T) {
 	cfg := &Config{
-		ListenAddr: "127.0.0.1:0",
+		ListenAddr: "127.0.0.1:28301",
 		UseTLS:     false,
 		DevMode:    true,
 	}
 	srv := NewServer(NewStore(""), cfg, "")
-	// Should not error about TLS missing because DevMode is true
-	go srv.ListenAndServe()
-	time.Sleep(100 * time.Millisecond) // Give it time to start
-	if srv.srv != nil {
-		srv.srv.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+
+	// Proper synchronization: dial the server until it accepts connections or fails
+	ready := make(chan struct{})
+	go func() {
+		for {
+			conn, err := net.Dial("tcp", "127.0.0.1:28301")
+			if err == nil {
+				conn.Close()
+				close(ready)
+				return
+			}
+			runtime.Gosched() // yield to scheduler
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			t.Fatalf("server failed to start: %v", err)
+		}
+	case <-ready:
+		// server started successfully
+		if srv.srv != nil {
+			srv.srv.Close()
+		}
+		<-errCh // wait for goroutine to finish
 	}
 
 	cfgProd := &Config{
