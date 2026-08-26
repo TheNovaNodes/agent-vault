@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -226,17 +227,18 @@ func (s *Store) Set(name, value string) {
 	}
 }
 
-func (s *Store) Get(name string) (Secret, bool) {
+var ErrSecretNotFound = errors.New("secret not found")
+
+func (s *Store) Get(name string) (Secret, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	sec, ok := s.secrets[name]
 	if !ok {
-		return Secret{}, false
+		return Secret{}, ErrSecretNotFound
 	}
 	value, err := s.sealedDecrypt(sec.Value)
 	if err != nil {
-		// If decryption fails, return raw value (fallback for plaintext migration)
-		value = sec.Value
+		return Secret{}, fmt.Errorf("decryption failed: %w", err)
 	}
 	// Return a copy to prevent mutation of internal state
 	result := Secret{
@@ -247,7 +249,7 @@ func (s *Store) Get(name string) (Secret, bool) {
 	if s.audit != nil {
 		s.audit.Log(ActionSecretGet, name, "store", "")
 	}
-	return result, true
+	return result, nil
 }
 
 func (s *Store) Delete(name string) bool {
@@ -269,14 +271,14 @@ func (s *Store) DeleteAll() {
 	s.secrets = make(map[string]*Secret)
 }
 
-func (s *Store) List() []Secret {
+func (s *Store) List() ([]Secret, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := make([]Secret, 0, len(s.secrets))
 	for _, sec := range s.secrets {
 		value, err := s.sealedDecrypt(sec.Value)
 		if err != nil {
-			value = sec.Value
+			return nil, fmt.Errorf("decryption failed for secret %s: %w", sec.Name, err)
 		}
 		result = append(result, Secret{
 			Name:      sec.Name,
@@ -284,7 +286,7 @@ func (s *Store) List() []Secret {
 			UpdatedAt: sec.UpdatedAt,
 		})
 	}
-	return result
+	return result, nil
 }
 
 func (s *Store) Count() int {
@@ -699,9 +701,12 @@ func (s *Server) handleSecretGet(w http.ResponseWriter, r *http.Request, name st
 		return
 	}
 
-	secret, ok := s.store.Get(name)
-	if !ok {
+	secret, err := s.store.Get(name)
+	if err == ErrSecretNotFound {
 		http.Error(w, "secret not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, "decryption failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -749,7 +754,12 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		jsonResponse(w, s.store.List())
+		secrets, err := s.store.List()
+	if err != nil {
+		http.Error(w, "decryption failed", http.StatusInternalServerError)
+		return
+	}
+	jsonResponse(w, secrets)
 
 	case http.MethodPost:
 		if !s.isAdmin(r) {
@@ -788,7 +798,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	secrets := s.store.List()
+	secrets, err := s.store.List()
+	if err != nil {
+		http.Error(w, "decryption failed", http.StatusInternalServerError)
+		return
+	}
 	export := make(map[string]string)
 	for _, s := range secrets {
 		export[s.Name] = s.Value
@@ -859,8 +873,9 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 		if s.config.AuditLog != nil {
 			s.config.AuditLog.Log(ActionTokenConsume, secretName, "api", "one-time")
 		}
-		secret, ok := s.store.Get(secretName)
-		if !ok {
+		secret, err := s.store.Get(secretName)
+		if err == ErrSecretNotFound {
+
 			http.Error(w, "secret not found", http.StatusNotFound)
 			return
 		}
@@ -907,7 +922,8 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 
 		result := make(map[string]interface{})
 		for _, sid := range secretIDs {
-			if sec, ok := s.store.Get(sid); ok {
+			sec, err := s.store.Get(sid)
+				if err == nil {
 				result[sid] = map[string]interface{}{
 					"name":       sec.Name,
 					"value":      sec.Value,
@@ -1015,7 +1031,8 @@ func (s *Server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 		}
 		view := projectView{Project: project}
 		for _, sid := range project.SecretIDs {
-			if sec, ok := s.store.Get(sid); ok {
+			sec, err := s.store.Get(sid)
+				if err == nil {
 				view.Secrets = append(view.Secrets, sec)
 			}
 		}
@@ -1397,7 +1414,11 @@ func cancelKB() tgbotapi.InlineKeyboardMarkup {
 
 func (b *Bot) sendMainMenu(chatID int64) {
 	b.resetSession(chatID)
-	secrets := b.store.List()
+	secrets, err := b.store.List()
+	if err != nil {
+		sendText(b.api, chatID, "❌ Ошибка расшифровки: "+err.Error())
+		return
+	}
 	text := fmt.Sprintf("🎭 <b>Lab Vault Agent OS</b>\n<i>Master AI Security Suite</i>\n\n🛡 <b>Статус:</b> 🟢 ACTIVE (RAM Sealed Mode)\n📋 <b>Секретов в хранилище:</b> %d\n\nВыберите действие из меню ниже:", len(secrets))
 	sendWithMenu(b.api, chatID, text, mainMenuKB())
 }
@@ -1486,7 +1507,11 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		sess := b.getSession(chatID)
 		sess.addSecretProjectID = id
 		sess.state = stateWaitingAddSecretName
-		secrets := b.store.List()
+		secrets, err := b.store.List()
+		if err != nil {
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			return
+		}
 		var secretNames []string
 		for _, s := range secrets {
 			secretNames = append(secretNames, s.Name)
@@ -1508,7 +1533,11 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 			sendWithMenu(b.api, chatID, "⚠️ Проект не найден", mainMenuKB())
 			break
 		}
-		secrets := b.store.List()
+		secrets, err := b.store.List()
+		if err != nil {
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			return
+		}
 		var secretNames []string
 		for _, s := range secrets {
 			secretNames = append(secretNames, s.Name)
@@ -1553,7 +1582,11 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 // === SECRET LIST ===
 
 func (b *Bot) sendSecretList(chatID int64) {
-	secrets := b.store.List()
+	secrets, err := b.store.List()
+		if err != nil {
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			return
+		}
 	if len(secrets) == 0 {
 		sendWithMenu(b.api, chatID, "📭 Секретов нет\n\nСоздайте первый секрет:", mainMenuKB())
 		return
@@ -1578,8 +1611,8 @@ func (b *Bot) sendSecretList(chatID int64) {
 // === SECRET VIEW ===
 
 func (b *Bot) sendSecretView(chatID int64, name string) {
-	secret, ok := b.store.Get(name)
-	if !ok {
+	secret, err := b.store.Get(name)
+		if err == ErrSecretNotFound {
 		sendWithMenu(b.api, chatID, "⚠️ Секрет не найден", mainMenuKB())
 		return
 	}
@@ -1632,8 +1665,8 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 // === CREATE TOKEN ===
 
 func (b *Bot) createSecretToken(chatID int64, name string) {
-	_, ok := b.store.Get(name)
-	if !ok {
+	_, err := b.store.Get(name)
+	if err != nil {
 		sendWithMenu(b.api, chatID, "⚠️ Секрет не найден", mainMenuKB())
 		return
 	}
@@ -1736,7 +1769,11 @@ func (b *Bot) deleteSecret(chatID int64, name string) {
 // === EXPORT ===
 
 func (b *Bot) sendExport(chatID int64) {
-	secrets := b.store.List()
+	secrets, err := b.store.List()
+		if err != nil {
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			return
+		}
 	if len(secrets) == 0 {
 		sendWithMenu(b.api, chatID, "📭 Нечего экспортировать", mainMenuKB())
 		return
@@ -1817,7 +1854,8 @@ func (b *Bot) sendProjectView(chatID int64, id string) {
 	// Collect secret names for display
 	secretNames := make([]string, 0, len(project.SecretIDs))
 	for _, sid := range project.SecretIDs {
-		if sec, ok := b.store.Get(sid); ok {
+		sec, err := b.store.Get(sid)
+			if err == nil {
 			secretNames = append(secretNames, sec.Name)
 		} else {
 			secretNames = append(secretNames, sid+" (не найден)")
@@ -1942,7 +1980,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			sendText(b.api, chatID, "⚠️ Имя не может быть пустым. Попробуйте ещё раз:")
 			return
 		}
-		if _, exists := b.store.Get(name); exists {
+		_, err := b.store.Get(name)
+		if err == nil {
 			sendText(b.api, chatID, fmt.Sprintf("⚠️ Секрет <b>%s</b> уже существует. Введите другое имя:", escapeHTML(name)))
 			return
 		}
@@ -1977,7 +2016,11 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		}
 		sess.projectName = name
 		sess.state = stateWaitingProjectSecrets
-		secrets := b.store.List()
+		secrets, err := b.store.List()
+		if err != nil {
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			return
+		}
 		if len(secrets) == 0 {
 			b.config.mu.Lock()
 			b.config.Projects[sess.projectID] = &Project{
@@ -2035,7 +2078,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			return
 		}
 		// Check secret exists
-		if _, ok := b.store.Get(secretName); !ok {
+		_, err := b.store.Get(secretName)
+		if err != nil {
 			sendText(b.api, chatID, fmt.Sprintf("⚠️ Секрет <b>%s</b> не найден. Введите существующий:", escapeHTML(secretName)))
 			return
 		}
@@ -2085,7 +2129,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 				s = strings.TrimSpace(s)
 				if s != "" {
 					// Verify secret exists
-					if _, ok := b.store.Get(s); !ok {
+					_, err := b.store.Get(s)
+		if err != nil {
 						sendText(b.api, chatID, fmt.Sprintf("⚠️ Секрет <b>%s</b> не найден. Попробуйте заново:", escapeHTML(s)))
 						return
 					}

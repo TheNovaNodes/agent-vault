@@ -609,8 +609,8 @@ func TestFSMCreateStep2_Value(t *testing.T) {
 	bot.handleMessage(makeMessage(100, "my_value"))
 
 	// Secret should be stored
-	sec, ok := store.Get("my_secret")
-	if !ok {
+	sec, err := store.Get("my_secret")
+	if err != nil {
 		t.Fatal("expected secret to be stored")
 	}
 	if sec.Value != "my_value" {
@@ -668,8 +668,8 @@ func TestFSMCreateFullFlow(t *testing.T) {
 	bot.handleMessage(makeMessage(100, "s3cret!"))
 
 	// Verify
-	sec, ok := store.Get("smtp_pass")
-	if !ok {
+	sec, err := store.Get("smtp_pass")
+	if err != nil {
 		t.Fatal("expected secret")
 	}
 	if sec.Value != "s3cret!" {

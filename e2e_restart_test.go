@@ -80,8 +80,8 @@ func TestSealedStoreE2ERestart(t *testing.T) {
 	}
 
 	// Verify plaintext retrieval
-	sec, ok := s2.Get("db_host")
-	if !ok {
+	sec, err := s2.Get("db_host")
+	if err != nil {
 		t.Fatal("expected secret to exist")
 	}
 	if sec.Value != "localhost" {
