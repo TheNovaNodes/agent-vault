@@ -142,7 +142,7 @@ type Store struct {
 
 // NewStore создаёт Store. Если password не пустой — включается sealed mode.
 // audit может быть nil — тогда логирование не ведётся.
-func NewStore(password string, audit ...*AuditLogger) *Store {
+func NewStore(password string, sealedSalt string, audit ...*AuditLogger) (*Store, error) {
 	s := &Store{
 		secrets: make(map[string]*Secret),
 	}
@@ -151,13 +151,13 @@ func NewStore(password string, audit ...*AuditLogger) *Store {
 	}
 	if password != "" {
 		s.sealed = true
-		s.sealedKey = make([]byte, 32)
-		if _, err := rand.Read(s.sealedKey); err != nil {
-			// fallback: derive from password (less secure but works without crypto/rand)
-			s.sealedKey = deriveKey(password, []byte("agent-vault-sealed-salt"))
+		saltBytes, err := hex.DecodeString(sealedSalt)
+		if err != nil || len(saltBytes) == 0 {
+			return nil, fmt.Errorf("invalid or empty sealed salt")
 		}
+		s.sealedKey = deriveKey(password, saltBytes)
 	}
-	return s
+	return s, nil
 }
 
 // sealedEncrypt шифрует plaintext через ChaCha20-Poly1305 с sealedKey.
@@ -310,6 +310,7 @@ type Config struct {
 	TLSCertPath    string                     `yaml:"tls_cert_path"`
 	TLSKeyPath     string                     `yaml:"tls_key_path"`
 	DevMode        bool                       `yaml:"-"`
+	SealedSalt     string                     `yaml:"sealed_salt"`
 	AuditLog       *AuditLogger              `yaml:"-"`
 	cleanupStop    chan struct{}             `yaml:"-"`
 }
@@ -349,6 +350,16 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if envBot := os.Getenv("VAULT_BOT_TOKEN"); envBot != "" {
 		cfg.TGBotToken = envBot
+	}
+	if cfg.SealedSalt == "" {
+		salt := make([]byte, 16)
+		if _, err := rand.Read(salt); err != nil {
+			return nil, fmt.Errorf("failed to generate salt: %w", err)
+		}
+		cfg.SealedSalt = hex.EncodeToString(salt)
+		if err := cfg.save(path); err != nil {
+			return nil, fmt.Errorf("failed to save generated salt: %w", err)
+		}
 	}
 	// Purge dead tokens on every startup
 	cfg.mu.Lock()
@@ -2192,8 +2203,10 @@ func main() {
 		}
 	}
 
-
-	store := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.AuditLog)
+	store, err := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.SealedSalt, cfg.AuditLog)
+	if err != nil {
+		log.Fatalf("failed to initialize store: %v", err)
+	}
 	cfg.startCleanupWorker(time.Hour)
 
 	// Load secrets from encrypted snapshot if exists
@@ -2206,9 +2219,11 @@ func main() {
 				if decErr == nil {
 					var secrets map[string]*Secret
 					if json.Unmarshal(decrypted, &secrets) == nil {
+						store.mu.Lock()
 						for name, sec := range secrets {
-							store.Set(name, sec.Value)
+							store.secrets[name] = sec
 						}
+						store.mu.Unlock()
 					}
 				} else {
 					log.Printf("[main] snapshot decrypt failed (wrong password?): %v", decErr)
