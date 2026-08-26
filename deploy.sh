@@ -10,6 +10,21 @@ API="http://127.0.0.1:8301"
 # Токен из переменной окружения или config.yaml
 ADMIN_TOKEN="${VAULT_ADMIN_TOKEN:-}"
 
+# Check TLS configuration
+CURL_OPTS="-sf"
+if [ -f "$PROJECT_DIR/config.yaml" ]; then
+    USE_TLS=$(python3 -c "import yaml; print(yaml.safe_load(open('$PROJECT_DIR/config.yaml')).get('use_tls', False))" 2>/dev/null || echo "False")
+    if [ "$USE_TLS" = "True" ]; then
+        API="https://127.0.0.1:8301"
+        TLS_CERT=$(python3 -c "import yaml; print(yaml.safe_load(open('$PROJECT_DIR/config.yaml')).get('tls_cert_path', ''))" 2>/dev/null || echo "")
+        if [ -n "$TLS_CERT" ] && [ -f "$TLS_CERT" ]; then
+            CURL_OPTS="-sf --cacert $TLS_CERT"
+        else
+            CURL_OPTS="-sf"
+        fi
+    fi
+fi
+
 PASS=0
 FAIL=0
 
@@ -74,7 +89,7 @@ else
 fi
 
 # API health (no auth required)
-HEALTH=$(curl -sf "$API/health" 2>/dev/null || echo "")
+HEALTH=$(curl $CURL_OPTS "$API/health" 2>/dev/null || echo "")
 if echo "$HEALTH" | grep -q '"status":"ok"'; then
     ok "API /health: $HEALTH"
 else
@@ -83,7 +98,7 @@ fi
 
 # Admin auth (if token available)
 if [ -n "$ADMIN_TOKEN" ]; then
-    SECRETS_RESP=$(curl -sf -H "X-Vault-Token: $ADMIN_TOKEN" "$API/secrets" 2>/dev/null || echo "")
+    SECRETS_RESP=$(curl $CURL_OPTS -H "X-Vault-Token: $ADMIN_TOKEN" "$API/secrets" 2>/dev/null || echo "")
     if echo "$SECRETS_RESP" | grep -q '\['; then
         ok "Admin auth: OK"
     else
@@ -98,7 +113,7 @@ echo "=== [4/5] API flow test ==="
 API_FLOW_OK=true
 
 # Secrets endpoint
-SECRETS=$(curl -sf "$API/health" 2>/dev/null || echo "")
+SECRETS=$(curl $CURL_OPTS "$API/health" 2>/dev/null || echo "")
 if echo "$SECRETS" | grep -q '"status":"ok"'; then
     SECRET_COUNT=$(echo "$SECRETS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('secrets',0))" 2>/dev/null || echo "?")
     ok "Secrets: $SECRET_COUNT in vault"
@@ -109,7 +124,7 @@ fi
 
 # Export endpoint (if token available)
 if [ -n "$ADMIN_TOKEN" ]; then
-    EXPORT=$(curl -sf -H "X-Vault-Token: $ADMIN_TOKEN" "$API/export" 2>/dev/null || echo "")
+    EXPORT=$(curl $CURL_OPTS -H "X-Vault-Token: $ADMIN_TOKEN" "$API/export" 2>/dev/null || echo "")
     if echo "$EXPORT" | grep -q '{'; then
         ok "Export: OK"
     else
@@ -151,7 +166,7 @@ fi
 echo ""
 echo "=== [5/5] Summary ==="
 echo "  $(systemctl show agent-vault --property=ActiveEnterTimestamp --value 2>/dev/null || echo 'N/A')"
-echo "  $(curl -sf "$API/health" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Secrets: {d.get(\"secrets\",\"?\")}, Uptime: {d.get(\"uptime\",\"?\")}')" 2>/dev/null || echo 'N/A')"
+echo "  $(curl $CURL_OPTS "$API/health" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Secrets: {d.get(\"secrets\",\"?\")}, Uptime: {d.get(\"uptime\",\"?\")}')" 2>/dev/null || echo 'N/A')"
 
 echo ""
 echo "=============================="

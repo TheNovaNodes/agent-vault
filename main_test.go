@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
+	"runtime"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -1161,4 +1163,72 @@ func TestHandleAccessO1Lookup(t *testing.T) {
 		t.Fatal("one-time token should be deleted after use")
 	}
 	cfg.mu.RUnlock()
+}
+
+func TestServerDevMode(t *testing.T) {
+	cfg := &Config{
+		ListenAddr: "127.0.0.1:28301",
+		UseTLS:     false,
+		DevMode:    true,
+	}
+	srv := NewServer(NewStore(""), cfg, "")
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+
+	// Proper synchronization: dial the server until it accepts connections or fails
+	ready := make(chan struct{})
+	go func() {
+		for {
+			conn, err := net.Dial("tcp", "127.0.0.1:28301")
+			if err == nil {
+				conn.Close()
+				close(ready)
+				return
+			}
+			runtime.Gosched() // yield to scheduler
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			t.Fatalf("server failed to start: %v", err)
+		}
+	case <-ready:
+		// server started successfully
+		if srv.srv != nil {
+			srv.srv.Close()
+		}
+		<-errCh // wait for goroutine to finish
+	}
+
+	cfgProd := &Config{
+		ListenAddr: "127.0.0.1:0",
+		UseTLS:     false,
+		DevMode:    false,
+	}
+	srvProd := NewServer(NewStore(""), cfgProd, "")
+	err := srvProd.ListenAndServe()
+	if err == nil {
+		t.Fatal("expected error in production mode without TLS")
+	}
+	if err.Error() != "TLS is required in production" {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+
+	cfgProdFallback := &Config{
+		ListenAddr:  "127.0.0.1:0",
+		UseTLS:      true,
+		TLSCertPath: "non-existent.crt",
+		TLSKeyPath:  "non-existent.key",
+		DevMode:     false,
+	}
+	srvProdFallback := NewServer(NewStore(""), cfgProdFallback, "")
+	err = srvProdFallback.ListenAndServe()
+	if err == nil {
+		t.Fatal("expected error in production mode with missing certs")
+	}
 }

@@ -53,13 +53,13 @@ Fully compatible with Linux environments and can run as a standard systemd servi
    make build
    ```
 2. Create a `config.yaml` based on `config.yaml.example`.
-3. Start the server (with an optional password for sealed mode):
+3. Start the server (with an optional password for sealed mode). For development without TLS, you must pass `-dev`:
    ```bash
-   VAULT_PASSWORD="my-secure-password" ./agent-vault -config config.yaml
+   VAULT_PASSWORD="my-secure-password" ./agent-vault -config config.yaml -dev
    ```
 4. Health check:
    ```bash
-   curl http://127.0.0.1:8301/health
+   curl https://127.0.0.1:8301/health
    ```
 
 ## Configuration and environment variables
@@ -114,7 +114,7 @@ An agent using an HTTP-based MCP client can fetch secrets using their provisione
 ```json
 {
   "method": "http.get",
-  "url": "http://127.0.0.1:8301/access/MY_TOKEN",
+  "url": "https://127.0.0.1:8301/access/MY_TOKEN",
   "headers": {}
 }
 ```

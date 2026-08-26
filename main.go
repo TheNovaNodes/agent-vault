@@ -309,6 +309,7 @@ type Config struct {
 	UseTLS         bool                       `yaml:"use_tls"`
 	TLSCertPath    string                     `yaml:"tls_cert_path"`
 	TLSKeyPath     string                     `yaml:"tls_key_path"`
+	DevMode        bool                       `yaml:"-"`
 	AuditLog       *AuditLogger              `yaml:"-"`
 	cleanupStop    chan struct{}             `yaml:"-"`
 }
@@ -381,6 +382,13 @@ func (c *Config) startCleanupWorker(interval time.Duration) {
 // stopCleanupWorker останавливает background cleanup goroutine.
 func (c *Config) stopCleanupWorker() {
 	close(c.cleanupStop)
+}
+
+func (c *Config) URLScheme() string {
+	if c.UseTLS {
+		return "https"
+	}
+	return "http"
 }
 
 func (c *Config) save(path string) error {
@@ -596,9 +604,19 @@ func (s *Server) ListenAndServe() error {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	if s.config.UseTLS && s.config.TLSCertPath != "" && s.config.TLSKeyPath != "" {
+	if !s.config.DevMode {
+		if !s.config.UseTLS || s.config.TLSCertPath == "" || s.config.TLSKeyPath == "" {
+			return fmt.Errorf("TLS is required in production")
+		}
+	}
+
+	if s.config.UseTLS {
 		log.Printf("[api] listening on %s (TLS)", s.config.ListenAddr)
 		return s.srv.ListenAndServeTLS(s.config.TLSCertPath, s.config.TLSKeyPath)
+	}
+
+	if !s.config.DevMode {
+		return fmt.Errorf("HTTP fallback is disabled in production")
 	}
 
 	log.Printf("[api] listening on %s", s.config.ListenAddr)
@@ -1645,8 +1663,8 @@ func (b *Bot) createSecretToken(chatID int64, name string) {
 	}
 
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s -H \"Authorization: Bearer %s\" http://%s/access</pre>",
-		escapeHTML(name), token, ttlStr, token, addr)
+	text := fmt.Sprintf("🔑 <b>Токен для %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl-команда:\n<pre>curl -s -H \"Authorization: Bearer %s\" %s://%s/access</pre>",
+		escapeHTML(name), token, ttlStr, token, b.config.URLScheme(), addr)
 
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -1857,8 +1875,8 @@ func (b *Bot) createProjectToken(chatID int64, id string) {
 		ttlStr = escapeHTML(expires.Format("02.01.2006 15:04"))
 	}
 	addr := b.config.ListenAddr
-	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H \"Authorization: Bearer %s\" http://%s/access</pre>",
-		escapeHTML(project.Name), token, ttlStr, token, addr)
+	text := fmt.Sprintf("🔑 <b>Токен для проекта %s</b>\n\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H \"Authorization: Bearer %s\" %s://%s/access</pre>",
+		escapeHTML(project.Name), token, ttlStr, token, b.config.URLScheme(), addr)
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("◀️ К проекту", "project_view:"+id),
@@ -2125,8 +2143,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 			b.resetSession(chatID)
 			sendWithMenu(b.api, chatID,
-				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H \"Authorization: Bearer %s\" http://%s/access</pre>",
-					escapeHTML(sess.name), token, ttlStr, token, addr),
+				fmt.Sprintf("✅ <b>%s</b> создан!\n\n🔑 Автотокен:\n<code>%s</code>\n\n⏳ TTL: %s\n\ncurl:\n<pre>curl -s -H \"Authorization: Bearer %s\" %s://%s/access</pre>",
+					escapeHTML(sess.name), token, ttlStr, token, b.config.URLScheme(), addr),
 				mainMenuKB())
 		} else {
 			b.resetSession(chatID)
@@ -2144,6 +2162,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "Path to config file")
+	devMode := flag.Bool("dev", false, "Run in development mode (allows non-TLS)")
 	flag.Parse()
 
 	cfg, err := loadConfig(*configPath)
@@ -2157,6 +2176,22 @@ func main() {
 	if cfg.AdminToken == "" {
 		log.Fatal("Admin token not set (admin_token in config or VAULT_ADMIN_TOKEN env)")
 	}
+
+	cfg.DevMode = *devMode
+	if !cfg.DevMode {
+		if !cfg.UseTLS || cfg.TLSCertPath == "" || cfg.TLSKeyPath == "" {
+			log.Fatal("TLS is required in production")
+		}
+	}
+	if cfg.UseTLS {
+		if _, err := os.Stat(cfg.TLSCertPath); err != nil {
+			log.Fatalf("TLS cert not readable: %v", err)
+		}
+		if _, err := os.Stat(cfg.TLSKeyPath); err != nil {
+			log.Fatalf("TLS key not readable: %v", err)
+		}
+	}
+
 
 	store := NewStore(os.Getenv("VAULT_PASSWORD"), cfg.AuditLog)
 	cfg.startCleanupWorker(time.Hour)
