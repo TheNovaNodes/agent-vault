@@ -1498,6 +1498,24 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		id := strings.TrimPrefix(data, "project_token:")
 		b.createProjectToken(chatID, id)
 
+
+	case strings.HasPrefix(data, "confirm_project_delete:"):
+		id := strings.TrimPrefix(data, "confirm_project_delete:")
+		b.config.mu.RLock()
+		project, exists := b.config.Projects[id]
+		b.config.mu.RUnlock()
+		if !exists {
+			sendWithMenu(b.api, chatID, "⚠️ Проект не найден", mainMenuKB())
+			return
+		}
+		sendWithMenu(b.api, chatID, fmt.Sprintf("⚠️ Вы уверены, что хотите безвозвратно удалить проект <b>%s</b>?", escapeHTML(project.Name)),
+			tgbotapi.NewInlineKeyboardMarkup(
+				tgbotapi.NewInlineKeyboardRow(
+					tgbotapi.NewInlineKeyboardButtonData("🗑 Да, удалить", "project_delete:"+id),
+					tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "project_view:"+id),
+				),
+			))
+
 	case strings.HasPrefix(data, "project_delete:"):
 		id := strings.TrimPrefix(data, "project_delete:")
 		b.deleteProject(chatID, id)
@@ -1566,6 +1584,17 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 	case strings.HasPrefix(data, "revoke:"):
 		name := strings.TrimPrefix(data, "revoke:")
 		b.revokeAllTokensForSecret(chatID, name)
+
+
+	case strings.HasPrefix(data, "confirm_delete:"):
+		name := strings.TrimPrefix(data, "confirm_delete:")
+		sendWithMenu(b.api, chatID, fmt.Sprintf("⚠️ Вы уверены, что хотите безвозвратно удалить секрет <b>%s</b>?", escapeHTML(name)),
+			tgbotapi.NewInlineKeyboardMarkup(
+				tgbotapi.NewInlineKeyboardRow(
+					tgbotapi.NewInlineKeyboardButtonData("🗑 Да, удалить", "delete:"+name),
+					tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "view:"+name),
+				),
+			))
 
 	case strings.HasPrefix(data, "delete:"):
 		name := strings.TrimPrefix(data, "delete:")
@@ -1653,7 +1682,7 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 		))
 	}
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить секрет", "delete:"+name),
+		tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить секрет", "confirm_delete:"+name),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("◀️ К списку", "back"),
@@ -1881,7 +1910,7 @@ func (b *Bot) sendProjectView(chatID int64, id string) {
 		tgbotapi.NewInlineKeyboardButtonData("✏️ Заменить секреты", "project_replace_secrets:"+id),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить проект", "project_delete:"+id),
+		tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить проект", "confirm_project_delete:"+id),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("◀️ К списку", "projects"),

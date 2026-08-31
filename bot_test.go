@@ -379,6 +379,22 @@ func TestCallbackRevokeTokens(t *testing.T) {
 
 // === CALLBACK: DELETE SECRET ===
 
+
+func TestCallbackConfirmDeleteSecret(t *testing.T) {
+	store := MustNewStore("", "")
+	store.Set("to_delete", "val")
+	cfg := newTestConfig()
+	bot, api := newTestBot(store, cfg)
+
+	bot.handleCallback(makeCallback(100, "confirm_delete:to_delete"))
+
+	msg := api.LastMessage()
+	if !strings.Contains(msg.Text, "Вы уверены") {
+		t.Fatalf("expected confirmation message, got: %s", msg.Text)
+	}
+}
+
+
 func TestCallbackDeleteSecret(t *testing.T) {
 	store := MustNewStore("", "")
 	store.Set("to_delete", "val")
