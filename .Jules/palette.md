@@ -1,0 +1,3 @@
+## 2026-08-31 - Add confirmation dialog for Telegram bot destructive actions
+**Learning:** This repository contains no web frontend UI, only a Telegram bot and CLI tools. UX improvements can still be made within the constraints of a chat interface. Adding an intermediate confirmation state with inline buttons (Yes / Cancel) is an effective micro-UX pattern to prevent accidental deletion of critical data like secrets and projects.
+**Action:** When working with bot interfaces, always evaluate if destructive actions (like delete) have adequate confirmation steps, and utilize inline keyboards for seamless confirmation flows without cluttering the chat history.
