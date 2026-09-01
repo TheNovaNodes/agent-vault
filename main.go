@@ -1656,12 +1656,14 @@ func (b *Bot) sendSecretView(chatID int64, name string) {
 	}
 	b.config.mu.RUnlock()
 
+	// ⚡ Bolt: Cache strings.ToLower(name) to prevent up to 7 redundant conversions in the block below.
+	lowerName := strings.ToLower(name)
 	categoryIcon := "🔑"
-	if strings.Contains(strings.ToLower(name), "agent") || strings.Contains(strings.ToLower(name), "jules") || strings.Contains(strings.ToLower(name), "manus") {
+	if strings.Contains(lowerName, "agent") || strings.Contains(lowerName, "jules") || strings.Contains(lowerName, "manus") {
 		categoryIcon = "🤖"
-	} else if strings.Contains(strings.ToLower(name), "db") || strings.Contains(strings.ToLower(name), "postgres") {
+	} else if strings.Contains(lowerName, "db") || strings.Contains(lowerName, "postgres") {
 		categoryIcon = "🗄"
-	} else if strings.Contains(strings.ToLower(name), "master") || strings.Contains(strings.ToLower(name), "admin") {
+	} else if strings.Contains(lowerName, "master") || strings.Contains(lowerName, "admin") {
 		categoryIcon = "🛡"
 	}
 
