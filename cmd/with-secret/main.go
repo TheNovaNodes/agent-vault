@@ -33,7 +33,7 @@ func NewStreamRedactor(target io.Writer, tokens [][]byte) *StreamRedactor {
 			}
 		}
 	}
-	
+
 	if len(valid) == 0 {
 		for _, t := range tokens {
 			valid = append(valid, t)
@@ -42,7 +42,7 @@ func NewStreamRedactor(target io.Writer, tokens [][]byte) *StreamRedactor {
 			}
 		}
 	}
-	
+
 	// Sort by length descending to match longest secrets first
 	sort.Slice(valid, func(i, j int) bool {
 		return len(valid[i]) > len(valid[j])
@@ -124,7 +124,7 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "❌ Error: Secret pointer %s not found.\n", pointerID)
 		return 1
 	}
-	
+
 	// Ensure the secret is only kept as long as needed by deleting it from shm after command finishes
 	defer os.Remove(secretPath)
 

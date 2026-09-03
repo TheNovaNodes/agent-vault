@@ -44,7 +44,7 @@ func TestAccessEndpoint(t *testing.T) {
 	defer srv.Close()
 
 	// Test valid token
-	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req, _ := http.NewRequest("GET", srv.URL+"/access", nil)
 	req.Header.Set("Authorization", "Bearer valid-token")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestAccessEndpointInvalidToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req, _ := http.NewRequest("GET", srv.URL+"/access", nil)
 	req.Header.Set("Authorization", "Bearer bad-token")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -185,7 +185,7 @@ func TestProjectTokenResponse(t *testing.T) {
 	defer srv.Close()
 
 	// Test project token returns 200
-	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req, _ := http.NewRequest("GET", srv.URL+"/access", nil)
 	req.Header.Set("Authorization", "Bearer project-token-123")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -225,7 +225,7 @@ func TestSingleSecretResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	req, _ := http.NewRequest("GET", srv.URL + "/access", nil)
+	req, _ := http.NewRequest("GET", srv.URL+"/access", nil)
 	req.Header.Set("Authorization", "Bearer some-token")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -256,7 +256,7 @@ func TestEnvEscape(t *testing.T) {
 		{"with space", "\"with space\""},
 		{"with\ttab", "\"with\ttab\""},
 		{"with#hash", "\"with#hash\""},
-		{`with"quote`, `with"quote`},  // quote not in " \t#" — no wrapping
+		{`with"quote`, `with"quote`}, // quote not in " \t#" — no wrapping
 	}
 	for _, tt := range tests {
 		got := envEscape(tt.input)
