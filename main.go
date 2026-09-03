@@ -134,11 +134,11 @@ func hashToken(token string) string {
 // === STORE ===
 
 type Store struct {
-	mu      sync.RWMutex
-	secrets map[string]*Secret
-	sealed  bool
+	mu        sync.RWMutex
+	secrets   map[string]*Secret
+	sealed    bool
 	sealedKey []byte // ChaCha20-Poly1305 key (32 bytes), generated at init if sealed mode enabled
-	audit   *AuditLogger
+	audit     *AuditLogger
 }
 
 // NewStore создаёт Store. Если password не пустой — включается sealed mode.
@@ -298,23 +298,23 @@ func (s *Store) Count() int {
 // === CONFIG ===
 
 type Config struct {
-	mu             sync.RWMutex               `yaml:"-"`
-	SnapshotPath   string                     `yaml:"snapshot_path"`
-	ListenAddr     string                     `yaml:"listen_addr"`
-	TGBotToken     string                     `yaml:"tg_bot_token"`
-	TGAdminID      int64                      `yaml:"tg_admin_id"`
-	AdminToken     string                     `yaml:"admin_token"`
-	TokenTTLHours  int                        `yaml:"token_ttl_hours"`
-	SecretTokens   map[string]*SecretToken    `yaml:"secret_tokens"`
-	Projects       map[string]*Project        `yaml:"projects"`
-	ProjectTokens  map[string]*ProjectToken   `yaml:"project_tokens"`
-	UseTLS         bool                       `yaml:"use_tls"`
-	TLSCertPath    string                     `yaml:"tls_cert_path"`
-	TLSKeyPath     string                     `yaml:"tls_key_path"`
-	DevMode        bool                       `yaml:"-"`
-	SealedSalt     string                     `yaml:"sealed_salt"`
-	AuditLog       *AuditLogger              `yaml:"-"`
-	cleanupStop    chan struct{}             `yaml:"-"`
+	mu            sync.RWMutex             `yaml:"-"`
+	SnapshotPath  string                   `yaml:"snapshot_path"`
+	ListenAddr    string                   `yaml:"listen_addr"`
+	TGBotToken    string                   `yaml:"tg_bot_token"`
+	TGAdminID     int64                    `yaml:"tg_admin_id"`
+	AdminToken    string                   `yaml:"admin_token"`
+	TokenTTLHours int                      `yaml:"token_ttl_hours"`
+	SecretTokens  map[string]*SecretToken  `yaml:"secret_tokens"`
+	Projects      map[string]*Project      `yaml:"projects"`
+	ProjectTokens map[string]*ProjectToken `yaml:"project_tokens"`
+	UseTLS        bool                     `yaml:"use_tls"`
+	TLSCertPath   string                   `yaml:"tls_cert_path"`
+	TLSKeyPath    string                   `yaml:"tls_key_path"`
+	DevMode       bool                     `yaml:"-"`
+	SealedSalt    string                   `yaml:"sealed_salt"`
+	AuditLog      *AuditLogger             `yaml:"-"`
+	cleanupStop   chan struct{}            `yaml:"-"`
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -755,11 +755,11 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		secrets, err := s.store.List()
-	if err != nil {
-		http.Error(w, "decryption failed", http.StatusInternalServerError)
-		return
-	}
-	jsonResponse(w, secrets)
+		if err != nil {
+			http.Error(w, "decryption failed", http.StatusInternalServerError)
+			return
+		}
+		jsonResponse(w, secrets)
 
 	case http.MethodPost:
 		if !s.isAdmin(r) {
@@ -923,7 +923,7 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 		result := make(map[string]interface{})
 		for _, sid := range secretIDs {
 			sec, err := s.store.Get(sid)
-				if err == nil {
+			if err == nil {
 				result[sid] = map[string]interface{}{
 					"name":       sec.Name,
 					"value":      sec.Value,
@@ -1032,7 +1032,7 @@ func (s *Server) handleProjectByID(w http.ResponseWriter, r *http.Request) {
 		view := projectView{Project: project}
 		for _, sid := range project.SecretIDs {
 			sec, err := s.store.Get(sid)
-				if err == nil {
+			if err == nil {
 				view.Secrets = append(view.Secrets, sec)
 			}
 		}
@@ -1267,24 +1267,24 @@ type botAPI interface {
 // === BOT ===
 
 const (
-	stateWaitingName              = "waiting_name"
-	stateWaitingValue             = "waiting_value"
-	stateWaitingProjectID         = "waiting_project_id"
-	stateWaitingProjectName       = "waiting_project_name"
-	stateWaitingProjectSecrets    = "waiting_project_secrets"
-	stateWaitingAddSecretName     = "waiting_add_secret_name"
-	stateWaitingReplaceSecrets    = "waiting_replace_secrets"
+	stateWaitingName           = "waiting_name"
+	stateWaitingValue          = "waiting_value"
+	stateWaitingProjectID      = "waiting_project_id"
+	stateWaitingProjectName    = "waiting_project_name"
+	stateWaitingProjectSecrets = "waiting_project_secrets"
+	stateWaitingAddSecretName  = "waiting_add_secret_name"
+	stateWaitingReplaceSecrets = "waiting_replace_secrets"
 )
 
 type session struct {
-	state             string
-	name              string
-	value             string
-	projectID         string
-	projectName       string
-	projectSecrets    []string
+	state              string
+	name               string
+	value              string
+	projectID          string
+	projectName        string
+	projectSecrets     []string
 	addSecretProjectID string
-	updatedAt         time.Time
+	updatedAt          time.Time
 }
 
 type Bot struct {
@@ -1509,7 +1509,7 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		sess.state = stateWaitingAddSecretName
 		secrets, err := b.store.List()
 		if err != nil {
-			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: "+err.Error())
 			return
 		}
 		var secretNames []string
@@ -1535,7 +1535,7 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		}
 		secrets, err := b.store.List()
 		if err != nil {
-			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: "+err.Error())
 			return
 		}
 		var secretNames []string
@@ -1583,10 +1583,10 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 
 func (b *Bot) sendSecretList(chatID int64) {
 	secrets, err := b.store.List()
-		if err != nil {
-			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
-			return
-		}
+	if err != nil {
+		sendText(b.api, chatID, "❌ Ошибка расшифровки: "+err.Error())
+		return
+	}
 	if len(secrets) == 0 {
 		sendWithMenu(b.api, chatID, "📭 Секретов нет\n\nСоздайте первый секрет:", mainMenuKB())
 		return
@@ -1612,7 +1612,7 @@ func (b *Bot) sendSecretList(chatID int64) {
 
 func (b *Bot) sendSecretView(chatID int64, name string) {
 	secret, err := b.store.Get(name)
-		if err == ErrSecretNotFound {
+	if err == ErrSecretNotFound {
 		sendWithMenu(b.api, chatID, "⚠️ Секрет не найден", mainMenuKB())
 		return
 	}
@@ -1770,10 +1770,10 @@ func (b *Bot) deleteSecret(chatID int64, name string) {
 
 func (b *Bot) sendExport(chatID int64) {
 	secrets, err := b.store.List()
-		if err != nil {
-			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
-			return
-		}
+	if err != nil {
+		sendText(b.api, chatID, "❌ Ошибка расшифровки: "+err.Error())
+		return
+	}
 	if len(secrets) == 0 {
 		sendWithMenu(b.api, chatID, "📭 Нечего экспортировать", mainMenuKB())
 		return
@@ -1855,7 +1855,7 @@ func (b *Bot) sendProjectView(chatID int64, id string) {
 	secretNames := make([]string, 0, len(project.SecretIDs))
 	for _, sid := range project.SecretIDs {
 		sec, err := b.store.Get(sid)
-			if err == nil {
+		if err == nil {
 			secretNames = append(secretNames, sec.Name)
 		} else {
 			secretNames = append(secretNames, sid+" (не найден)")
@@ -2018,7 +2018,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		sess.state = stateWaitingProjectSecrets
 		secrets, err := b.store.List()
 		if err != nil {
-			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
+			sendText(b.api, chatID, "❌ Ошибка расшифровки: "+err.Error())
 			return
 		}
 		if len(secrets) == 0 {
@@ -2130,7 +2130,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 				if s != "" {
 					// Verify secret exists
 					_, err := b.store.Get(s)
-		if err != nil {
+					if err != nil {
 						sendText(b.api, chatID, fmt.Sprintf("⚠️ Секрет <b>%s</b> не найден. Попробуйте заново:", escapeHTML(s)))
 						return
 					}

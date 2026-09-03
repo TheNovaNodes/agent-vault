@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"runtime"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )

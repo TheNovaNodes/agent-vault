@@ -970,4 +970,3 @@ func TestCallback_ProjectView_ShowsSecrets(t *testing.T) {
 		t.Fatalf("expected secret names in project view, got: %s", msg.Text)
 	}
 }
-
