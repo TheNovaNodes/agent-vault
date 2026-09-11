@@ -7,6 +7,11 @@ requires: go, telegram-bot-api
 works_with: agent-vault-env, agent-vault-cli
 last_verified: 2026-08-26
 ---
+
+[![Go CI](https://github.com/TheNovaNodes/agent-vault/actions/workflows/go-ci.yml/badge.svg)](https://github.com/TheNovaNodes/agent-vault/actions/workflows/go-ci.yml)
+![Go Version](https://img.shields.io/badge/go-1.25.0-blue)
+![License](https://img.shields.io/github/license/TheNovaNodes/agent-vault)
+
 Status: Active / Core Component
 Last Verified: 2026-08-26
 
@@ -55,7 +60,7 @@ Fully compatible with Linux environments and can run as a standard systemd servi
    ```
 4. Health check:
    ```bash
-   curl https://127.0.0.1:8301/health
+   curl http://127.0.0.1:8301/health
    ```
 
 ## CLI Companion Tools

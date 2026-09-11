@@ -112,3 +112,10 @@ tmp/
 *.key
 *.pem
 *.p12
+bin/
+agent-vault*
+*.prof
+snapshot.enc
+.env
+.env.*
+!.env.example

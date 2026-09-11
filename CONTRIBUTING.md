@@ -9,7 +9,7 @@
 ## Before Committing
 - Run tests: check project README for test command
 - No files larger than 10MB
-- No .env, credentials, secrets, node_modules, build artifacts
+- No .env, credentials, secrets, build artifacts
 - All commits should be clean and verified locally
 
 ## Git Rules
