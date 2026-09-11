@@ -1,0 +1,15 @@
+# Lab Vault — пример конфигурации
+# Скопируйте в config.yaml и заполните значения
+
+snapshot_path: ./snapshot.enc
+listen_addr: 127.0.0.1:8301
+tg_bot_token: "YOUR_BOT_TOKEN"       # или VAULT_BOT_TOKEN env
+tg_admin_id: 0                        # ваш Telegram ID
+admin_token: "YOUR_ADMIN_TOKEN"       # или VAULT_ADMIN_TOKEN env
+token_ttl_hours: 720                  # TTL токенов (30 дней)
+use_tls: false
+tls_cert_path: ""
+tls_key_path: ""
+
+# Токены доступа (управляются через бота)
+secret_tokens: {}
