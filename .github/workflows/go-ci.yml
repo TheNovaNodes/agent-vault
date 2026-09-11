@@ -7,12 +7,14 @@ on:
       - '**.md'
       - 'docs/**'
       - '.gitignore'
+      - 'LICENSE'
   pull_request:
     branches: [main, master]
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - '.gitignore'
+      - 'LICENSE'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

@@ -854,7 +854,7 @@ func TestHandleAccessOneTimeToken(t *testing.T) {
 func TestRateLimiterAllows(t *testing.T) {
 	rl := newIPRateLimiter(5, time.Minute)
 	for i := 0; i < 5; i++ {
-		if !rl.allow("192.168.1.1") {
+		if !rl.allow("192.0.2.1") {
 			t.Fatalf("request %d should be allowed", i+1)
 		}
 	}
@@ -863,18 +863,18 @@ func TestRateLimiterAllows(t *testing.T) {
 func TestRateLimiterBlocks(t *testing.T) {
 	rl := newIPRateLimiter(3, time.Minute)
 	for i := 0; i < 3; i++ {
-		rl.allow("192.168.1.1")
+		rl.allow("192.0.2.1")
 	}
-	if rl.allow("192.168.1.1") {
+	if rl.allow("192.0.2.1") {
 		t.Fatal("4th request should be blocked")
 	}
 }
 
 func TestRateLimiterPerIP(t *testing.T) {
 	rl := newIPRateLimiter(2, time.Minute)
-	rl.allow("192.168.1.1")
-	rl.allow("192.168.1.1")
-	if !rl.allow("192.168.1.2") {
+	rl.allow("192.0.2.1")
+	rl.allow("192.0.2.1")
+	if !rl.allow("192.0.2.2") {
 		t.Fatal("different IP should be allowed")
 	}
 }
