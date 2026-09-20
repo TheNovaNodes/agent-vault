@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -43,7 +44,9 @@ const (
 	ActionProjectDelete AuditAction = "project.delete"
 )
 
-var validSecretName = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
+// validSecretName allows alphanumeric characters, Cyrillic, spaces, dots, dashes, underscores, and apostrophes.
+// Slashes, newlines and control characters are strictly forbidden to prevent path traversal and shell corruption.
+var validSecretName = regexp.MustCompile(`^[a-zA-Z0-9а-яА-ЯёЁ._\-'’ ]+$`)
 
 type AuditEntry struct {
 	Timestamp time.Time   `json:"timestamp"`
@@ -664,6 +667,7 @@ func (s *Server) ListenAndServe() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/secrets", s.handleSecrets)
+	mux.HandleFunc("/secrets/batch-delete", s.handleSecretsBatchDelete)
 	mux.HandleFunc("/secret/", s.handleSecretByName)
 	mux.HandleFunc("/export", s.handleExport)
 	mux.HandleFunc("/access", s.handleAccess)
@@ -868,15 +872,16 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "name and value required", http.StatusBadRequest)
 			return
 		}
-		if !validSecretName.MatchString(req.Name) {
-			http.Error(w, "invalid secret name: must match ^[a-zA-Z0-9_-]+$", http.StatusBadRequest)
+		trimmedName := strings.TrimSpace(req.Name)
+		if trimmedName == "" || !validSecretName.MatchString(trimmedName) || len([]byte(trimmedName)) > 48 {
+			http.Error(w, "invalid secret name: must match ^[a-zA-Z0-9а-яА-ЯёЁ._\\-'’ ]+$ (max 48 bytes)", http.StatusBadRequest)
 			return
 		}
-		s.store.Set(req.Name, req.Value)
+		s.store.Set(trimmedName, req.Value)
 		if s.config.AuditLog != nil {
-			s.config.AuditLog.Log(ActionSecretSet, req.Name, "api", "POST /secrets")
+			s.config.AuditLog.Log(ActionSecretSet, trimmedName, "api", "POST /secrets")
 		}
-		jsonResponse(w, map[string]string{"status": "created", "name": req.Name})
+		jsonResponse(w, map[string]string{"status": "created", "name": trimmedName})
 
 	case http.MethodDelete:
 		if !s.isAdmin(r) {
@@ -889,6 +894,51 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (s *Server) handleSecretsBatchDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !s.isAdmin(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		Names []string `json:"names"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Names) == 0 {
+		http.Error(w, "names array required", http.StatusBadRequest)
+		return
+	}
+
+	deleted := make([]string, 0, len(req.Names))
+	s.config.mu.Lock()
+	for _, name := range req.Names {
+		if s.store.Delete(name) {
+			deleted = append(deleted, name)
+			for hash, st := range s.config.SecretTokens {
+				if st.SecretName == name {
+					delete(s.config.SecretTokens, hash)
+				}
+			}
+			s.config.removeSecretFromProjects(name)
+			if s.config.AuditLog != nil {
+				s.config.AuditLog.Log(ActionSecretDelete, name, "api", "POST /secrets/batch-delete")
+			}
+		}
+	}
+	if err := s.config.save(s.configPath); err != nil {
+		log.Printf("[api] config save error on batch delete: %v", err)
+	}
+	s.config.mu.Unlock()
+
+	jsonResponse(w, map[string]interface{}{
+		"status":  "deleted",
+		"count":   len(deleted),
+		"secrets": deleted,
+	})
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -1389,7 +1439,9 @@ type session struct {
 	projectName       string
 	projectSecrets    []string
 	addSecretProjectID string
-	updatedAt         time.Time
+	selectedSecrets    map[string]bool
+	batchPage          int
+	updatedAt          time.Time
 }
 
 type Bot struct {
@@ -1473,6 +1525,19 @@ func sendText(bot botAPI, chatID int64, text string) {
 	}
 }
 
+func editMessage(bot botAPI, chatID int64, messageID int, text string, kb tgbotapi.InlineKeyboardMarkup) {
+	if messageID == 0 {
+		sendWithMenu(bot, chatID, text, kb)
+		return
+	}
+	edit := tgbotapi.NewEditMessageTextAndMarkup(chatID, messageID, text, kb)
+	edit.ParseMode = "HTML"
+	if _, err := bot.Send(edit); err != nil {
+		log.Printf("[bot] edit message fallback: %v", err)
+		sendWithMenu(bot, chatID, text, kb)
+	}
+}
+
 func escapeHTML(s string) string {
 	replacer := strings.NewReplacer(
 		"&", "&amp;",
@@ -1494,7 +1559,10 @@ func mainMenuKB() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("📁 Проекты", "projects"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("☑️ Удалить пачкой", "batch_delete"),
 			tgbotapi.NewInlineKeyboardButtonData("🗑 Удалить секреты", "wipe_secrets"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🚫 Удалить токены", "wipe_tokens"),
 		),
 	)
@@ -1552,12 +1620,136 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		return
 	}
 	chatID := cb.Message.Chat.ID
+	messageID := cb.Message.MessageID
 	data := cb.Data
 	if _, err := b.api.Request(tgbotapi.NewCallback(cb.ID, "")); err != nil {
 		log.Printf("[bot] callback answer error: %v", err)
 	}
 
 	switch {
+	// --- Batch deletion ---
+	case data == "batch_delete":
+		sess := b.getSession(chatID)
+		sess.selectedSecrets = make(map[string]bool)
+		sess.batchPage = 0
+		text, kb := b.buildBatchDeleteView(chatID, 0)
+		editMessage(b.api, chatID, messageID, text, kb)
+
+	case strings.HasPrefix(data, "b_tog:"):
+		idxStr := strings.TrimPrefix(data, "b_tog:")
+		idx, err := strconv.Atoi(idxStr)
+		if err == nil {
+			secrets, errList := b.store.List()
+			if errList == nil && idx >= 0 && idx < len(secrets) {
+				name := secrets[idx].Name
+				sess := b.getSession(chatID)
+				if sess.selectedSecrets == nil {
+					sess.selectedSecrets = make(map[string]bool)
+				}
+				if sess.selectedSecrets[name] {
+					delete(sess.selectedSecrets, name)
+				} else {
+					sess.selectedSecrets[name] = true
+				}
+				text, kb := b.buildBatchDeleteView(chatID, sess.batchPage)
+				editMessage(b.api, chatID, messageID, text, kb)
+			}
+		}
+
+	case strings.HasPrefix(data, "b_page:"):
+		pageStr := strings.TrimPrefix(data, "b_page:")
+		page, err := strconv.Atoi(pageStr)
+		if err == nil {
+			sess := b.getSession(chatID)
+			sess.batchPage = page
+			text, kb := b.buildBatchDeleteView(chatID, page)
+			editMessage(b.api, chatID, messageID, text, kb)
+		}
+
+	case data == "b_all":
+		sess := b.getSession(chatID)
+		if sess.selectedSecrets == nil {
+			sess.selectedSecrets = make(map[string]bool)
+		}
+		secrets, errList := b.store.List()
+		if errList == nil {
+			for _, s := range secrets {
+				sess.selectedSecrets[s.Name] = true
+			}
+		}
+		text, kb := b.buildBatchDeleteView(chatID, sess.batchPage)
+		editMessage(b.api, chatID, messageID, text, kb)
+
+	case data == "b_none":
+		sess := b.getSession(chatID)
+		sess.selectedSecrets = make(map[string]bool)
+		text, kb := b.buildBatchDeleteView(chatID, sess.batchPage)
+		editMessage(b.api, chatID, messageID, text, kb)
+
+	case data == "b_confirm":
+		sess := b.getSession(chatID)
+		secrets, errList := b.store.List()
+		if errList != nil || len(secrets) == 0 {
+			b.sendMainMenu(chatID)
+			return
+		}
+		var selectedNames []string
+		for _, s := range secrets {
+			if sess.selectedSecrets[s.Name] {
+				selectedNames = append(selectedNames, s.Name)
+			}
+		}
+		if len(selectedNames) == 0 {
+			text, kb := b.buildBatchDeleteView(chatID, sess.batchPage)
+			editMessage(b.api, chatID, messageID, text, kb)
+			return
+		}
+
+		var preview []string
+		for i, n := range selectedNames {
+			if i >= 15 {
+				preview = append(preview, fmt.Sprintf("<i>...и ещё %d секретов</i>", len(selectedNames)-15))
+				break
+			}
+			preview = append(preview, "• <code>"+escapeHTML(n)+"</code>")
+		}
+
+		confirmText := fmt.Sprintf("⚠️ <b>Подтверждение пакетного удаления</b>\n\nВы действительно хотите безвозвратно удалить выбранные секреты (%d шт.)?\n\n%s\n\n<i>Все связанные токены доступа также будут аннулированы!</i>",
+			len(selectedNames), strings.Join(preview, "\n"))
+
+		confirmKB := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("🔥 Да, удалить (%d)", len(selectedNames)), "b_exec"),
+				tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", fmt.Sprintf("b_page:%d", sess.batchPage)),
+			),
+		)
+		editMessage(b.api, chatID, messageID, confirmText, confirmKB)
+
+	case data == "b_exec":
+		sess := b.getSession(chatID)
+		secrets, errList := b.store.List()
+		if errList != nil || len(secrets) == 0 {
+			b.sendMainMenu(chatID)
+			return
+		}
+		var toDelete []string
+		for _, s := range secrets {
+			if sess.selectedSecrets[s.Name] {
+				toDelete = append(toDelete, s.Name)
+			}
+		}
+		deletedCount := b.deleteSecretsBatch(chatID, toDelete)
+		sess.selectedSecrets = make(map[string]bool)
+		editMessage(b.api, chatID, messageID, fmt.Sprintf("🗑 <b>Пакетное удаление завершено</b>\n\nУдалено секретов: <b>%d</b>", deletedCount), mainMenuKB())
+
+	case data == "b_return":
+		sess := b.getSession(chatID)
+		sess.selectedSecrets = make(map[string]bool)
+		b.sendMainMenu(chatID)
+
+	case data == "b_noop":
+		// no-op for inactive pagination buttons
+
 	// --- Main menu ---
 	case data == "create":
 		b.getSession(chatID).state = stateWaitingName
@@ -1736,6 +1928,7 @@ func (b *Bot) sendSecretList(chatID int64) {
 		))
 	}
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("☑️ Удалить пачкой", "batch_delete"),
 		tgbotapi.NewInlineKeyboardButtonData("📦 Экспорт", "export"),
 	))
 	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
@@ -1743,6 +1936,134 @@ func (b *Bot) sendSecretList(chatID int64) {
 	))
 	text := fmt.Sprintf("📋 <b>Секреты</b> (%d)\n\nВыберите секрет:", len(secrets))
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(rows...))
+}
+
+// === BATCH DELETION ===
+
+func (b *Bot) buildBatchDeleteView(chatID int64, page int) (string, tgbotapi.InlineKeyboardMarkup) {
+	secrets, err := b.store.List()
+	if err != nil || len(secrets) == 0 {
+		return "📭 <b>Секретов нет</b>", mainMenuKB()
+	}
+
+	sess := b.getSession(chatID)
+	if sess.selectedSecrets == nil {
+		sess.selectedSecrets = make(map[string]bool)
+	}
+
+	const pageSize = 10
+	totalPages := (len(secrets) + pageSize - 1) / pageSize
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page < 0 {
+		page = 0
+	}
+	if page >= totalPages {
+		page = totalPages - 1
+	}
+	sess.batchPage = page
+
+	// Count total selected
+	selectedCount := 0
+	for _, s := range secrets {
+		if sess.selectedSecrets[s.Name] {
+			selectedCount++
+		}
+	}
+
+	start := page * pageSize
+	end := start + pageSize
+	if end > len(secrets) {
+		end = len(secrets)
+	}
+
+	var rows [][]tgbotapi.InlineKeyboardButton
+	for i := start; i < end; i++ {
+		s := secrets[i]
+		box := "⬜"
+		if sess.selectedSecrets[s.Name] {
+			box = "✅"
+		}
+		// Telegram callback data limit: 64 bytes.
+		// Using index i guarantees tiny callback data (e.g. "b_tog:0", "b_tog:14").
+		btnText := fmt.Sprintf("%s %s", box, s.Name)
+		if len([]rune(btnText)) > 30 {
+			btnText = string([]rune(btnText)[:29]) + "…"
+		}
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(btnText, fmt.Sprintf("b_tog:%d", i)),
+		))
+	}
+
+	// Select all / Deselect all
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("☑️ Выбрать все", "b_all"),
+		tgbotapi.NewInlineKeyboardButtonData("◻️ Снять все", "b_none"),
+	))
+
+	// Pagination
+	if totalPages > 1 {
+		var navRow []tgbotapi.InlineKeyboardButton
+		if page > 0 {
+			navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("◀️ Пред", fmt.Sprintf("b_page:%d", page-1)))
+		} else {
+			navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("⛔️", "b_noop"))
+		}
+		navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("📄 %d/%d", page+1, totalPages), "b_noop"))
+		if page < totalPages-1 {
+			navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("След ▶️", fmt.Sprintf("b_page:%d", page+1)))
+		} else {
+			navRow = append(navRow, tgbotapi.NewInlineKeyboardButtonData("⛔️", "b_noop"))
+		}
+		rows = append(rows, navRow)
+	}
+
+	// Action button if anything selected
+	if selectedCount > 0 {
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("🗑 Удалить выбранные (%d)", selectedCount), "b_confirm"),
+		))
+	}
+
+	// Back / Cancel button
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("◀️ В главное меню", "b_return"),
+	))
+
+	text := fmt.Sprintf("☑️ <b>Пакетное удаление секретов</b>\n\nОтметьте секреты для удаления:\n• Выбрано: <b>%d</b> из <b>%d</b>\n• Страница: <b>%d/%d</b>",
+		selectedCount, len(secrets), page+1, totalPages)
+
+	return text, tgbotapi.NewInlineKeyboardMarkup(rows...)
+}
+
+func (b *Bot) deleteSecretsBatch(chatID int64, names []string) int {
+	if len(names) == 0 {
+		return 0
+	}
+	b.config.mu.Lock()
+	defer b.config.mu.Unlock()
+	deletedCount := 0
+	for _, name := range names {
+		if b.store.Delete(name) {
+			deletedCount++
+			for hash, st := range b.config.SecretTokens {
+				if st.SecretName == name {
+					delete(b.config.SecretTokens, hash)
+				}
+			}
+			b.config.removeSecretFromProjects(name)
+			if b.config.AuditLog != nil {
+				b.config.AuditLog.Log(ActionSecretDelete, name, "bot", "batch_delete")
+			}
+		}
+	}
+	if deletedCount > 0 {
+		if err := b.config.save(b.configPath); err != nil {
+			log.Printf("[bot] config save error on batch delete: %v", err)
+		}
+	}
+	return deletedCount
 }
 
 // === SECRET VIEW ===
@@ -2134,8 +2455,8 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			sendText(b.api, chatID, "⚠️ Имя не может быть пустым. Попробуйте ещё раз:")
 			return
 		}
-		if !validSecretName.MatchString(name) {
-			sendText(b.api, chatID, "⚠️ Недопустимое имя секрета. Разрешены только буквы, цифры, дефис и подчеркивание (^[a-zA-Z0-9_-]+$). Попробуйте ещё раз:")
+		if !validSecretName.MatchString(name) || len([]byte(name)) > 48 {
+			sendText(b.api, chatID, "⚠️ Недопустимое имя секрета. Разрешены латиница, кириллица, цифры, пробел, дефис, точка и апостроф (до 48 байт). Попробуйте ещё раз:")
 			return
 		}
 		_, err := b.store.Get(name)
