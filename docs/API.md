@@ -88,8 +88,39 @@ X-Vault-Token: <admin-token>
 
 **Коды:**
 - 200 — успешно создано/обновлено
-- 400 — отсутствует name или value
+- 400 — отсутствует name или value / недопустимые символы
 - 403 — запрещено (пустой admin token)
+- 401 — не авторизован
+
+---
+
+### Пакетное удаление секретов
+
+```
+POST /secrets/batch-delete
+Content-Type: application/json
+X-Vault-Token: <admin-token>
+```
+
+**Тело запроса:**
+```json
+{
+  "names": ["smtp_password", "db_pass"]
+}
+```
+
+**Ответ:**
+```json
+{
+  "status": "deleted",
+  "count": 2,
+  "secrets": ["smtp_password", "db_pass"]
+}
+```
+
+**Коды:**
+- 200 — успешно удалено
+- 400 — отсутствует массив `names` или он пуст
 - 401 — не авторизован
 
 ---

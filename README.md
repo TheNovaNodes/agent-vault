@@ -5,7 +5,7 @@ protocol: http
 primary_capability: secret-management
 requires: go, telegram-bot-api
 works_with: agent-vault-env, agent-vault-cli
-last_verified: 2026-08-26
+last_verified: 2026-09-20
 ---
 
 [![Go CI](https://github.com/TheNovaNodes/agent-vault/actions/workflows/go-ci.yml/badge.svg)](https://github.com/TheNovaNodes/agent-vault/actions/workflows/go-ci.yml)
@@ -13,16 +13,16 @@ last_verified: 2026-08-26
 ![License](https://img.shields.io/github/license/TheNovaNodes/agent-vault)
 
 Status: Active / Core Component
-Last Verified: 2026-08-26
+Last Verified: 2026-09-20
 
 ## What it does / does not do
 **What it does:**
 - Securely stores secrets using in-memory structures backed by ChaCha20-Poly1305 encrypted snapshots (`snapshot.enc`).
-- Provides a Telegram Bot interface for admins to manage secrets and access tokens.
+- Provides an interactive Telegram Bot interface with individual card streaming, copy buttons, and multi-select checkbox batch deletion.
 - Supports single-secret tokens and project-level tokens (groups of secrets).
-- Exposes a minimal HTTP API for agent access.
-- Provides CLI tools (`agent-vault-env`, `agent-vault-cli`) for environment-variable generation and administration.
-- Maintains a ring-buffer audit log of all access and management actions.
+- Exposes a minimal HTTP REST API for agent and admin access (including `/secrets/batch-delete`).
+- Provides CLI tools (`agent-vault-env`, `agent-vault-cli`, `with-secret`) for environment-variable generation and administration.
+- Maintains an efficient ring-buffer audit log of all access and management actions.
 
 **What it does not do:**
 - Does not claim automatic onboarding (agents must be explicitly granted tokens).
@@ -126,6 +126,7 @@ Since Agent Vault provides an HTTP API rather than native MCP tools, here is the
 | `/access` | GET | Token in Header (`Authorization: Bearer <token>`) | Audit Log | Retrieves secret or project secrets. |
 | `/secrets` | GET | Admin Token | None | Lists all secrets. |
 | `/secrets` | POST | Admin Token | State Mutation | Creates or updates a secret. |
+| `/secrets/batch-delete` | POST | Admin Token | State Mutation | Deletes multiple secrets and revokes tokens. |
 | `/secret/{name}` | GET | Admin Token | None | Retrieves a specific secret by name. |
 | `/secret/{name}` | DELETE | Admin Token | State Mutation | Deletes a secret and revokes its tokens. |
 | `/export` | GET | Admin Token | None | Exports all secrets. |
@@ -137,8 +138,9 @@ Since Agent Vault provides an HTTP API rather than native MCP tools, here is the
 | `/project-tokens/{id}` | GET, POST | Admin Token | State Mutation | Lists or creates project tokens. |
 
 ## Security model and trust boundaries
-- **Data at Rest:** Encrypted with ChaCha20-Poly1305 if `VAULT_PASSWORD` is provided.
+- **Data at Rest:** Encrypted with ChaCha20-Poly1305 if `VAULT_PASSWORD` is provided. Fail-closed snapshot persistence with atomic write.
 - **Authentication:** Admin actions require the Admin Token. Agent access is strictly gated by immutable, expirable, and revocable hash-based tokens.
+- **Input Validation:** Secret names validated against `^[a-zA-Z0-9а-яА-ЯёЁ._\-'’ ]+$` (up to 48 bytes), strictly blocking path traversal and command injection.
 - **Audit Logging:** Every access or management action is recorded in a ring buffer to detect unauthorized access attempts.
 
 ## Tests and exact commands

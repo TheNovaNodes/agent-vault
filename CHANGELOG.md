@@ -1,8 +1,8 @@
 ---
 description: "agent-vault — история изменений"
 type: changelog
-last_reviewed: 2026-06-21
-last_code_change: 2026-06-21
+last_reviewed: 2026-09-20
+last_code_change: 2026-09-20
 status: active
 ---
 
@@ -14,6 +14,43 @@ status: active
 версионирование — [Semantic Versioning](https://semver.org/lang/ru/).
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-09-20
+
+### Added
+- **Interactive Checkbox Multi-Select Batch Deletion**:
+  - Telegram bot batch deletion mode (`batch_delete`) with visual toggle checkboxes (`[ ⬜ ]` <-> `[ ✅ ]`).
+  - Mass operations: «Выбрать все» (`b_all`) и «Снять все» (`b_none`).
+  - Pagination (10 items per page) with compact 64-byte safe callbacks (`b_tog:<idx>`).
+  - Dynamic delete counter with hard confirmation dialogue and strictly in-place message updates (`EditMessageTextAndMarkup`).
+  - Cascading cleanup: RAM storage deletion, associated token revocation, project association removal, and audit logging.
+- **Batch Deletion HTTP API**:
+  - `POST /secrets/batch-delete` with admin token authentication for automated multi-secret purge.
+- **Card Stream Export in Telegram Bot**:
+  - Export flow streams individual ephemeral cards per secret with interactive inline copy buttons instead of monolithic dumps.
+- **Enhanced Secret Name Validation**:
+  - Expanded regex to support Cyrillic characters, spaces, dots, and apostrophes (`^[a-zA-Z0-9а-яА-ЯёЁ._\-'’ ]+$` up to 48 bytes) while maintaining strict protection against path traversal and control character injection.
+
+### Fixed
+- **Fail-Closed Snapshot Persistence**:
+  - Corrupted snapshot or invalid key now crashes early instead of silently wiping the in-memory vault.
+  - Snapshot file writing utilizes atomic temporary files (`.tmp` + `os.Rename`).
+- **Telegram Bot Lifecycle & Log Hygiene**:
+  - Enforced `AllowedUpdates = ["message", "callback_query"]` so callback buttons are never dropped during polling.
+  - Sanitized log output in `sendWithMenu` to prevent secret leakage in error logs.
+  - Guarded against nil message pointer panics on callback queries.
+- **Rate Limiting & Token Recovery**:
+  - Fixed cumulative lockout bug in `ipRateLimiter` where rejected requests were indefinitely resetting the penalty window.
+  - Added token rollback on decryption failure during `/access` calls, preventing one-time tokens from being consumed when the server encounters a crypto error.
+  - Replaced O(N) memory-shifting slice in `AuditLogger` ring buffer with zero-alloc circular buffer indexing.
+- **Chronological Sorting**:
+  - Sorted secret lists and project views chronologically so freshest additions reliably appear at the bottom.
+
+### Operational / DevOps
+- **Zero-Python Deployment**:
+  - Completely purged Python and `PyYAML` runtime dependencies from `deploy.sh`.
+  - Replaced with pure POSIX shell pipelines and native `jq` parsing (with grep/sed fallback).
+  - Added automatic admin token extraction from local `config.yaml`.
 
 ## [1.0.0] - 2026-09-11
 
