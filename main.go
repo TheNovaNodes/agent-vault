@@ -1908,38 +1908,61 @@ func (b *Bot) deleteSecret(chatID int64, name string) {
 
 func (b *Bot) sendExport(chatID int64) {
 	secrets, err := b.store.List()
-		if err != nil {
-			sendText(b.api, chatID, "❌ Ошибка расшифровки: " + err.Error())
-			return
-		}
+	if err != nil {
+		sendText(b.api, chatID, "❌ Ошибка расшифровки: "+err.Error())
+		return
+	}
 	if len(secrets) == 0 {
 		sendWithMenu(b.api, chatID, "📭 Нечего экспортировать", mainMenuKB())
 		return
 	}
 
-	export := make(map[string]string)
+	sendText(b.api, chatID, fmt.Sprintf("📦 <b>Экспорт секретов</b> (%d)\nФормирование карточек...", len(secrets)))
+
+	b.config.mu.RLock()
+	tokenCounts := make(map[string]int)
+	for _, st := range b.config.SecretTokens {
+		if !st.Revoked && (st.ExpiresAt.IsZero() || time.Now().Before(st.ExpiresAt)) {
+			tokenCounts[st.SecretName]++
+		}
+	}
+	b.config.mu.RUnlock()
+
 	for _, s := range secrets {
-		export[s.Name] = s.Value
+		lowerName := strings.ToLower(s.Name)
+		categoryIcon := "🔑"
+		if strings.Contains(lowerName, "agent") || strings.Contains(lowerName, "jules") || strings.Contains(lowerName, "manus") {
+			categoryIcon = "🤖"
+		} else if strings.Contains(lowerName, "db") || strings.Contains(lowerName, "postgres") {
+			categoryIcon = "🗄"
+		} else if strings.Contains(lowerName, "master") || strings.Contains(lowerName, "admin") {
+			categoryIcon = "🛡"
+		}
+
+		val := escapeHTML(s.Value)
+		if len(val) > 3500 {
+			val = val[:3500] + "\n... (truncated)"
+		}
+
+		cardText := fmt.Sprintf("🛡 <b>LAB VAULT SECRET CARD</b>\n──────────────────────────────\n%s <b>Имя:</b> <code>%s</code>\n🔒 <b>Шифрование:</b> ChaCha20-Poly1305 (RAM-Only)\n🔑 <b>Активных токенов:</b> %d\n📅 <b>Обновлён:</b> %s\n──────────────────────────────\n📋 <b>Значение:</b> (тапните для копирования)\n<pre>%s</pre>",
+			categoryIcon,
+			escapeHTML(s.Name),
+			tokenCounts[s.Name],
+			escapeHTML(s.UpdatedAt.Format("02.01.2006 15:04:05 UTC")),
+			val)
+
+		kb := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🔑 Создать токен", "token:"+s.Name),
+				tgbotapi.NewInlineKeyboardButtonData("⚙️ Управление", "view:"+s.Name),
+			),
+		)
+
+		sendWithMenu(b.api, chatID, cardText, kb)
+		time.Sleep(35 * time.Millisecond)
 	}
 
-	data, err := json.MarshalIndent(export, "", "  ")
-	if err != nil {
-		sendWithMenu(b.api, chatID, "⚠️ Ошибка экспорта", mainMenuKB())
-		return
-	}
-
-	// Split into chunks if too big (Telegram limit 4096)
-	rawStr := string(data)
-	if len(rawStr) > 3000 {
-		rawStr = rawStr[:3000] + "\n... (truncated)"
-	}
-	text := "📦 <b>Экспорт секретов</b>\n\n<pre>" + escapeHTML(rawStr) + "</pre>"
-
-	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("◀️ К списку", "back"),
-		),
-	))
+	sendWithMenu(b.api, chatID, fmt.Sprintf("✅ <b>Экспорт завершён:</b> выгружено %d карточек", len(secrets)), mainMenuKB())
 }
 
 // === PROJECT BOT METHODS ===

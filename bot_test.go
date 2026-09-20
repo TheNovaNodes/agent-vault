@@ -454,12 +454,16 @@ func TestCallbackExport(t *testing.T) {
 
 	bot.handleCallback(makeCallback(100, "export"))
 
-	msg := api.LastMessage()
-	if !strings.Contains(msg.Text, "Экспорт") {
-		t.Fatalf("expected export message, got: %s", msg.Text)
+	msgs := api.AllMessages()
+	if len(msgs) != 4 {
+		t.Fatalf("expected 4 messages (1 intro + 2 cards + 1 completion), got %d", len(msgs))
 	}
-	if !strings.Contains(msg.Text, "k1") || !strings.Contains(msg.Text, "k2") {
-		t.Fatalf("expected secret names in export, got: %s", msg.Text)
+	allText := ""
+	for _, m := range msgs {
+		allText += m.Text + "\n"
+	}
+	if !strings.Contains(allText, "k1") || !strings.Contains(allText, "k2") {
+		t.Fatalf("expected secret names in export cards, got: %s", allText)
 	}
 }
 
@@ -1156,11 +1160,71 @@ func TestSendExport_HTMLEscaping(t *testing.T) {
 	store.Set("xml_secret", "<script>alert('xss')</script>&foo")
 	bot.sendExport(chatID)
 
-	last := api.LastMessage()
-	if strings.Contains(last.Text, "<script>") {
-		t.Fatalf("expected raw XML/HTML tags to be escaped in export, got: %s", last.Text)
+	msgs := api.AllMessages()
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages (intro + 1 card + completion), got %d", len(msgs))
 	}
-	if !strings.Contains(last.Text, "\\u003cscript\\u003e") {
-		t.Fatalf("expected escaped json in export, got: %s", last.Text)
+
+	card := msgs[1]
+	if strings.Contains(card.Text, "<script>") {
+		t.Fatalf("expected raw XML/HTML tags to be escaped in export card, got: %s", card.Text)
+	}
+	if !strings.Contains(card.Text, "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;&amp;foo") {
+		t.Fatalf("expected escaped HTML in export card, got: %s", card.Text)
+	}
+	if card.ReplyMarkup == nil {
+		t.Fatal("expected inline keyboard markup on export card")
+	}
+}
+
+func TestSendExport_MultiCardStream(t *testing.T) {
+	store := MustNewStore("", "")
+	cfg := newTestConfig()
+	bot, api := newTestBot(store, cfg)
+	chatID := int64(100)
+
+	now := time.Now()
+	store.mu.Lock()
+	store.secrets["sec1"] = &Secret{Name: "sec1", Value: "val1", UpdatedAt: now.Add(-2 * time.Hour)}
+	store.secrets["sec2"] = &Secret{Name: "sec2", Value: "val2", UpdatedAt: now.Add(-1 * time.Hour)}
+	store.secrets["sec3"] = &Secret{Name: "sec3", Value: "val3", UpdatedAt: now}
+	store.mu.Unlock()
+
+	bot.sendExport(chatID)
+
+	msgs := api.AllMessages()
+	// 1 intro + 3 secret cards + 1 completion = 5 messages
+	if len(msgs) != 5 {
+		t.Fatalf("expected 5 messages, got %d", len(msgs))
+	}
+
+	expectedOrder := []string{"sec1", "sec2", "sec3"}
+	for i, exp := range expectedOrder {
+		card := msgs[i+1]
+		if !strings.Contains(card.Text, exp) {
+			t.Fatalf("card %d: expected secret name %s, got: %s", i, exp, card.Text)
+		}
+		if !strings.Contains(card.Text, "val"+exp[3:]) {
+			t.Fatalf("card %d: expected value val%s, got: %s", i, exp[3:], card.Text)
+		}
+		// Verify inline action buttons
+		kb, ok := card.ReplyMarkup.(tgbotapi.InlineKeyboardMarkup)
+		if !ok || len(kb.InlineKeyboard) != 1 || len(kb.InlineKeyboard[0]) != 2 {
+			t.Fatalf("card %d: expected 2 inline action buttons", i)
+		}
+		btnToken := kb.InlineKeyboard[0][0]
+		btnManage := kb.InlineKeyboard[0][1]
+		if *btnToken.CallbackData != "token:"+exp {
+			t.Fatalf("card %d: expected token callback data token:%s, got %s", i, exp, *btnToken.CallbackData)
+		}
+		if *btnManage.CallbackData != "view:"+exp {
+			t.Fatalf("card %d: expected view callback data view:%s, got %s", i, exp, *btnManage.CallbackData)
+		}
+	}
+
+	// Verify completion message
+	last := msgs[4]
+	if !strings.Contains(last.Text, "Экспорт завершён") || !strings.Contains(last.Text, "3 карточек") {
+		t.Fatalf("expected completion text, got: %s", last.Text)
 	}
 }
