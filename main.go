@@ -1429,7 +1429,7 @@ func sendWithMenu(bot botAPI, chatID int64, text string, kb tgbotapi.InlineKeybo
 	msg.ParseMode = "HTML"
 	msg.ReplyMarkup = kb
 	if _, err := bot.Send(msg); err != nil {
-		log.Printf("[bot] send error: %v | text: %q", err, text)
+		log.Printf("[bot] send error: %v", err)
 	}
 }
 
@@ -1515,6 +1515,9 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		b.api.Request(tgbotapi.NewCallback(cb.ID, "Unauthorized"))
 		return
 	}
+	if cb.Message == nil {
+		return
+	}
 	chatID := cb.Message.Chat.ID
 	data := cb.Data
 	if _, err := b.api.Request(tgbotapi.NewCallback(cb.ID, "")); err != nil {
@@ -1528,6 +1531,7 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 		sendWithMenu(b.api, chatID, "➕ <b>Создание секрета</b>\n\nШаг 1/2: Введите имя секрета\n\n<i>Пример: smtp_pass</i>\n\nили /cancel для отмены", cancelKB())
 
 	case data == "list":
+		b.resetSession(chatID)
 		b.sendSecretList(chatID)
 
 	case data == "wipe_secrets":
@@ -1556,6 +1560,7 @@ func (b *Bot) handleCallback(cb *tgbotapi.CallbackQuery) {
 
 	// --- Projects ---
 	case data == "projects":
+		b.resetSession(chatID)
 		b.sendProjectList(chatID)
 
 	case data == "project_create":
@@ -1891,13 +1896,11 @@ func (b *Bot) sendExport(chatID int64) {
 	}
 
 	// Split into chunks if too big (Telegram limit 4096)
-	text := "📦 <b>Экспорт секретов</b>\n\n<pre>"
-	if len(data) > 3000 {
-		text += string(data[:3000]) + "\n... (truncated)"
-	} else {
-		text += string(data)
+	rawStr := string(data)
+	if len(rawStr) > 3000 {
+		rawStr = rawStr[:3000] + "\n... (truncated)"
 	}
-	text += "</pre>"
+	text := "📦 <b>Экспорт секретов</b>\n\n<pre>" + escapeHTML(rawStr) + "</pre>"
 
 	sendWithMenu(b.api, chatID, text, tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -2463,6 +2466,7 @@ func main() {
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 30
+	u.AllowedUpdates = []string{"message", "callback_query"}
 	updates := botAPI.GetUpdatesChan(u)
 
 	for {
