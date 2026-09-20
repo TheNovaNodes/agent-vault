@@ -15,13 +15,17 @@ if [ -f "/etc/agent-vault/config.yaml" ]; then
     CONFIG_FILE="/etc/agent-vault/config.yaml"
 fi
 
+if [ -z "$ADMIN_TOKEN" ] && [ -f "$CONFIG_FILE" ]; then
+    ADMIN_TOKEN=$(grep -E '^\s*admin_token:' "$CONFIG_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"'\' || true)
+fi
+
 # Check TLS configuration
 CURL_OPTS="-sf --max-time 10"
 if [ -f "$CONFIG_FILE" ]; then
-    USE_TLS=$(python3 -c "import yaml; print(yaml.safe_load(open('$CONFIG_FILE')).get('use_tls', False))" 2>/dev/null || echo "False")
-    if [ "$USE_TLS" = "True" ]; then
+    USE_TLS=$(grep -E '^\s*use_tls:' "$CONFIG_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"'\' | tr '[:upper:]' '[:lower:]' || echo "false")
+    if [ "$USE_TLS" = "true" ]; then
         API="https://127.0.0.1:8301"
-        TLS_CERT=$(python3 -c "import yaml; print(yaml.safe_load(open('$CONFIG_FILE')).get('tls_cert_path', ''))" 2>/dev/null || echo "")
+        TLS_CERT=$(grep -E '^\s*tls_cert_path:' "$CONFIG_FILE" 2>/dev/null | awk '{print $2}' | tr -d '"'\' || true)
         if [ -n "$TLS_CERT" ] && [ -f "$TLS_CERT" ]; then
             CURL_OPTS="-sf --max-time 10 --cacert $TLS_CERT"
         else
@@ -133,7 +137,11 @@ API_FLOW_OK=true
 # Secrets endpoint
 SECRETS=$(curl $CURL_OPTS "$API/health" 2>/dev/null || echo "")
 if echo "$SECRETS" | grep -q '"status":"ok"'; then
-    SECRET_COUNT=$(echo "$SECRETS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('secrets',0))" 2>/dev/null || echo "?")
+    if command -v jq &>/dev/null; then
+        SECRET_COUNT=$(echo "$SECRETS" | jq -r '.secrets // 0' 2>/dev/null || echo "?")
+    else
+        SECRET_COUNT=$(echo "$SECRETS" | grep -o '"secrets":[0-9]*' | cut -d: -f2 || echo "?")
+    fi
     ok "Secrets: $SECRET_COUNT in vault"
 else
     fail "Health: no response"
@@ -184,7 +192,15 @@ fi
 echo ""
 echo "=== [5/5] Summary ==="
 echo "  $(systemctl show agent-vault --property=ActiveEnterTimestamp --value 2>/dev/null || echo 'N/A')"
-echo "  $(curl $CURL_OPTS "$API/health" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Secrets: {d.get(\"secrets\",\"?\")}, Uptime: {d.get(\"uptime\",\"?\")}')" 2>/dev/null || echo 'N/A')"
+HEALTH_JSON=$(curl $CURL_OPTS "$API/health" 2>/dev/null || echo "")
+if command -v jq &>/dev/null && [ -n "$HEALTH_JSON" ]; then
+    SUMMARY_LINE=$(echo "$HEALTH_JSON" | jq -r '"Secrets: \(.secrets // "?"), Uptime: \(.uptime // "?")"' 2>/dev/null || echo "N/A")
+else
+    SEC=$(echo "$HEALTH_JSON" | grep -o '"secrets":[0-9]*' | cut -d: -f2 || true)
+    UPT=$(echo "$HEALTH_JSON" | grep -o '"uptime":"[^"]*"' | cut -d'"' -f4 || true)
+    SUMMARY_LINE="Secrets: ${SEC:-?}, Uptime: ${UPT:-?}"
+fi
+echo "  $SUMMARY_LINE"
 
 echo ""
 echo "=============================="
