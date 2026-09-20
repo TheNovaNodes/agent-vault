@@ -30,6 +30,20 @@ func (m *mockBotAPI) Send(c tgbotapi.Chattable) (tgbotapi.Message, error) {
 	case tgbotapi.MessageConfig:
 		m.messages = append(m.messages, v)
 		return tgbotapi.Message{MessageID: len(m.messages)}, nil
+	case tgbotapi.EditMessageTextConfig:
+		var replyMarkup tgbotapi.InlineKeyboardMarkup
+		if v.ReplyMarkup != nil {
+			replyMarkup = *v.ReplyMarkup
+		}
+		m.messages = append(m.messages, tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{
+				ChatID:      v.ChatID,
+				ReplyMarkup: replyMarkup,
+			},
+			Text:      v.Text,
+			ParseMode: v.ParseMode,
+		})
+		return tgbotapi.Message{MessageID: v.MessageID}, nil
 	}
 	return tgbotapi.Message{}, nil
 }
@@ -124,7 +138,7 @@ func newTestConfig() *Config {
 func makeCallback(chatID int64, data string) *tgbotapi.CallbackQuery {
 	return &tgbotapi.CallbackQuery{
 		ID: "cb-1", From: &tgbotapi.User{ID: chatID},
-		Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}},
+		Message: &tgbotapi.Message{MessageID: 10, Chat: &tgbotapi.Chat{ID: chatID}},
 		Data:    data,
 	}
 }
@@ -1226,5 +1240,199 @@ func TestSendExport_MultiCardStream(t *testing.T) {
 	last := msgs[4]
 	if !strings.Contains(last.Text, "Экспорт завершён") || !strings.Contains(last.Text, "3 карточек") {
 		t.Fatalf("expected completion text, got: %s", last.Text)
+	}
+}
+
+// === BATCH DELETION TESTS ===
+
+func TestBatchDelete_InteractiveFlow(t *testing.T) {
+	store := MustNewStore("", "")
+	now := time.Now()
+	store.mu.Lock()
+	store.secrets["alpha"] = &Secret{Name: "alpha", Value: "val-a", UpdatedAt: now}
+	store.secrets["beta"] = &Secret{Name: "beta", Value: "val-b", UpdatedAt: now.Add(time.Second)}
+	store.secrets["gamma"] = &Secret{Name: "gamma", Value: "val-c", UpdatedAt: now.Add(2 * time.Second)}
+	store.mu.Unlock()
+
+	cfg := newTestConfig()
+	cfg.SecretTokens[hashToken("tok-beta")] = &SecretToken{SecretName: "beta", Token: hashToken("tok-beta")}
+	cfg.Projects["p1"] = &Project{ID: "p1", Name: "Proj1", SecretIDs: []string{"beta", "gamma"}, CreatedAt: now}
+
+	bot, api := newTestBot(store, cfg)
+	chatID := int64(100)
+
+	// 1. Open batch deletion view
+	bot.handleCallback(makeCallback(chatID, "batch_delete"))
+	last := api.LastMessage()
+	if !strings.Contains(last.Text, "Пакетное удаление") {
+		t.Fatalf("expected batch delete header, got: %s", last.Text)
+	}
+	kb := last.ReplyMarkup.(tgbotapi.InlineKeyboardMarkup)
+	// Check initial buttons have empty checkboxes ⬜
+	if !strings.Contains(kb.InlineKeyboard[0][0].Text, "⬜ alpha") {
+		t.Fatalf("expected ⬜ alpha, got: %s", kb.InlineKeyboard[0][0].Text)
+	}
+
+	// 2. Toggle alpha (idx 0)
+	bot.handleCallback(makeCallback(chatID, "b_tog:0"))
+	last = api.LastMessage()
+	kb = last.ReplyMarkup.(tgbotapi.InlineKeyboardMarkup)
+	if !strings.Contains(kb.InlineKeyboard[0][0].Text, "✅ alpha") {
+		t.Fatalf("expected ✅ alpha after toggle, got: %s", kb.InlineKeyboard[0][0].Text)
+	}
+	if !strings.Contains(last.Text, "Выбрано: <b>1</b>") {
+		t.Fatalf("expected selected count 1, got: %s", last.Text)
+	}
+
+	// 3. Toggle beta (idx 1)
+	bot.handleCallback(makeCallback(chatID, "b_tog:1"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Выбрано: <b>2</b>") {
+		t.Fatalf("expected selected count 2, got: %s", last.Text)
+	}
+
+	// 4. Select all (b_all)
+	bot.handleCallback(makeCallback(chatID, "b_all"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Выбрано: <b>3</b>") {
+		t.Fatalf("expected selected count 3, got: %s", last.Text)
+	}
+
+	// 5. Deselect all (b_none)
+	bot.handleCallback(makeCallback(chatID, "b_none"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Выбрано: <b>0</b>") {
+		t.Fatalf("expected selected count 0, got: %s", last.Text)
+	}
+
+	// 6. Select beta only (b_tog:1)
+	bot.handleCallback(makeCallback(chatID, "b_tog:1"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Выбрано: <b>1</b>") {
+		t.Fatalf("expected selected count 1, got: %s", last.Text)
+	}
+
+	// 7. Click confirm (b_confirm)
+	bot.handleCallback(makeCallback(chatID, "b_confirm"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Подтверждение пакетного удаления") || !strings.Contains(last.Text, "beta") {
+		t.Fatalf("expected confirmation message for beta, got: %s", last.Text)
+	}
+
+	// 8. Execute deletion (b_exec)
+	bot.handleCallback(makeCallback(chatID, "b_exec"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Пакетное удаление завершено") || !strings.Contains(last.Text, "Удалено секретов: <b>1</b>") {
+		t.Fatalf("expected completion message, got: %s", last.Text)
+	}
+
+	// Verify store state
+	if store.Count() != 2 {
+		t.Fatalf("expected 2 secrets left in store, got %d", store.Count())
+	}
+	if _, err := store.Get("beta"); err == nil {
+		t.Fatal("expected beta to be deleted from store")
+	}
+	if _, err := store.Get("alpha"); err != nil {
+		t.Fatal("expected alpha to remain in store")
+	}
+	if _, err := store.Get("gamma"); err != nil {
+		t.Fatal("expected gamma to remain in store")
+	}
+
+	// Verify token was revoked
+	if _, exists := cfg.SecretTokens[hashToken("tok-beta")]; exists {
+		t.Fatal("expected token for beta to be deleted from SecretTokens")
+	}
+
+	// Verify project references cleaned
+	if len(cfg.Projects["p1"].SecretIDs) != 1 || cfg.Projects["p1"].SecretIDs[0] != "gamma" {
+		t.Fatalf("expected project secretIDs to only contain gamma, got: %v", cfg.Projects["p1"].SecretIDs)
+	}
+}
+
+func TestBatchDelete_Pagination(t *testing.T) {
+	store := MustNewStore("", "")
+	now := time.Now()
+	store.mu.Lock()
+	for i := 0; i < 25; i++ {
+		name := fmt.Sprintf("sec_%02d", i)
+		store.secrets[name] = &Secret{Name: name, Value: "v", UpdatedAt: now.Add(time.Duration(i) * time.Second)}
+	}
+	store.mu.Unlock()
+
+	cfg := newTestConfig()
+	bot, api := newTestBot(store, cfg)
+	chatID := int64(100)
+
+	// Open batch delete
+	bot.handleCallback(makeCallback(chatID, "batch_delete"))
+	last := api.LastMessage()
+	if !strings.Contains(last.Text, "Страница: <b>1/3</b>") {
+		t.Fatalf("expected page 1/3, got: %s", last.Text)
+	}
+
+	// Next page
+	bot.handleCallback(makeCallback(chatID, "b_page:1"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Страница: <b>2/3</b>") {
+		t.Fatalf("expected page 2/3, got: %s", last.Text)
+	}
+
+	// Prev page
+	bot.handleCallback(makeCallback(chatID, "b_page:0"))
+	last = api.LastMessage()
+	if !strings.Contains(last.Text, "Страница: <b>1/3</b>") {
+		t.Fatalf("expected page 1/3, got: %s", last.Text)
+	}
+}
+
+func TestSecretNameValidation_CyrillicAndExtendedChars(t *testing.T) {
+	store := MustNewStore("", "")
+	cfg := newTestConfig()
+	bot, api := newTestBot(store, cfg)
+	chatID := int64(100)
+
+	validNames := []string{
+		"Тайлер",
+		"Марла Сингер",
+		"Набор для Трикстера",
+		"app.dev-key's",
+		"test_key 123",
+	}
+
+	for _, name := range validNames {
+		bot.resetSession(chatID)
+		bot.getSession(chatID).state = stateWaitingName
+		bot.handleMessage(makeMessage(chatID, name))
+		sess := bot.getSession(chatID)
+		if sess.state != stateWaitingValue {
+			t.Fatalf("expected valid name %q to transition to stateWaitingValue, got state: %q", name, sess.state)
+		}
+		if sess.name != name {
+			t.Fatalf("expected session name %q, got %q", name, sess.name)
+		}
+	}
+
+	invalidNames := []string{
+		"bad/slash",
+		"bad;semicolon",
+		"bad\nnewline",
+		"bad\x00null",
+		"a_very_long_secret_name_that_exceeds_forty_eight_bytes_limit_abcdefghijklmnop",
+	}
+
+	for _, name := range invalidNames {
+		bot.resetSession(chatID)
+		bot.getSession(chatID).state = stateWaitingName
+		bot.handleMessage(makeMessage(chatID, name))
+		sess := bot.getSession(chatID)
+		if sess.state != stateWaitingName {
+			t.Fatalf("expected invalid name %q to stay in stateWaitingName, got state: %q", name, sess.state)
+		}
+		last := api.LastMessage()
+		if !strings.Contains(last.Text, "Недопустимое имя секрета") {
+			t.Fatalf("expected validation warning for %q, got: %s", name, last.Text)
+		}
 	}
 }

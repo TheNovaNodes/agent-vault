@@ -3,12 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
-	"runtime"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1465,5 +1466,118 @@ func TestConfigListProjects_SortingFreshAtBottom(t *testing.T) {
 		if projects[i].ID != expID {
 			t.Fatalf("at index %d: expected project ID %s, got %s", i, expID, projects[i].ID)
 		}
+	}
+}
+
+func TestHandleSecretsBatchDelete_API(t *testing.T) {
+	store := MustNewStore("", "")
+	store.Set("sec_a", "val_a")
+	store.Set("sec_b", "val_b")
+	store.Set("sec_c", "val_c")
+
+	cfg := &Config{
+		AdminToken:   "test-admin",
+		SecretTokens: make(map[string]*SecretToken),
+		Projects:     make(map[string]*Project),
+	}
+	cfg.SecretTokens[hashToken("tok-a")] = &SecretToken{SecretName: "sec_a", Token: hashToken("tok-a")}
+	cfg.Projects["proj1"] = &Project{ID: "proj1", Name: "Proj1", SecretIDs: []string{"sec_a", "sec_c"}}
+
+	srv := NewServer(store, cfg, "/tmp/test-config-batch.yaml")
+
+	// 1. Unauthorized request
+	rr := httptest.NewRecorder()
+	reqBody := `{"names": ["sec_a", "sec_b"]}`
+	req := httptest.NewRequest("POST", "/secrets/batch-delete", strings.NewReader(reqBody))
+	srv.handleSecretsBatchDelete(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 unauthorized, got %d", rr.Code)
+	}
+
+	// 2. Authorized request
+	rr = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/secrets/batch-delete", strings.NewReader(reqBody))
+	req.Header.Set("X-Vault-Token", "test-admin")
+	srv.handleSecretsBatchDelete(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Status  string   `json:"status"`
+		Count   int      `json:"count"`
+		Secrets []string `json:"secrets"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Count != 2 || len(resp.Secrets) != 2 {
+		t.Fatalf("expected 2 deleted secrets, got %+v", resp)
+	}
+
+	// Verify store
+	if _, err := store.Get("sec_a"); err == nil {
+		t.Fatal("sec_a should be deleted")
+	}
+	if _, err := store.Get("sec_b"); err == nil {
+		t.Fatal("sec_b should be deleted")
+	}
+	if _, err := store.Get("sec_c"); err != nil {
+		t.Fatal("sec_c should remain")
+	}
+
+	// Verify token revoked
+	if _, exists := cfg.SecretTokens[hashToken("tok-a")]; exists {
+		t.Fatal("token for sec_a should be deleted")
+	}
+
+	// Verify project cleaned
+	if len(cfg.Projects["proj1"].SecretIDs) != 1 || cfg.Projects["proj1"].SecretIDs[0] != "sec_c" {
+		t.Fatalf("expected proj1 secrets to be [sec_c], got %v", cfg.Projects["proj1"].SecretIDs)
+	}
+}
+
+func TestHandleSecrets_CyrillicNameValidation_API(t *testing.T) {
+	store := MustNewStore("", "")
+	cfg := &Config{
+		AdminToken:   "test-admin",
+		SecretTokens: make(map[string]*SecretToken),
+		Projects:     make(map[string]*Project),
+	}
+	srv := NewServer(store, cfg, "/tmp/test-config-cyr.yaml")
+
+	// Valid Cyrillic name
+	rr := httptest.NewRecorder()
+	reqBody := `{"name": "Тайлер Дёрден", "value": "секретное_мыло"}`
+	req := httptest.NewRequest("POST", "/secrets", strings.NewReader(reqBody))
+	req.Header.Set("X-Vault-Token", "test-admin")
+	srv.handleSecrets(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for valid Cyrillic name, got %d: %s", rr.Code, rr.Body.String())
+	}
+	sec, err := store.Get("Тайлер Дёрден")
+	if err != nil || sec.Value != "секретное_мыло" {
+		t.Fatalf("expected secret stored with value 'секретное_мыло', got %v, err=%v", sec, err)
+	}
+
+	// Invalid name with forbidden characters
+	rr = httptest.NewRecorder()
+	reqBody = `{"name": "secret/path", "value": "val"}`
+	req = httptest.NewRequest("POST", "/secrets", strings.NewReader(reqBody))
+	req.Header.Set("X-Vault-Token", "test-admin")
+	srv.handleSecrets(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for slash in name, got %d", rr.Code)
+	}
+
+	// Invalid name exceeding 48 bytes
+	rr = httptest.NewRecorder()
+	longName := strings.Repeat("а", 30) // 30 Russian letters = 60 bytes in UTF-8
+	reqBody = fmt.Sprintf(`{"name": "%s", "value": "val"}`, longName)
+	req = httptest.NewRequest("POST", "/secrets", strings.NewReader(reqBody))
+	req.Header.Set("X-Vault-Token", "test-admin")
+	srv.handleSecrets(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for name > 48 bytes, got %d", rr.Code)
 	}
 }
