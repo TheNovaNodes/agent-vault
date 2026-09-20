@@ -1417,3 +1417,53 @@ func TestHandleAccess_DecryptionErrorRollsBackToken(t *testing.T) {
 		t.Fatal("expected one-time token to be rolled back and restored on decryption failure")
 	}
 }
+
+func TestStoreList_SortingFreshAtBottom(t *testing.T) {
+	s := MustNewStore("", "")
+	now := time.Now()
+
+	s.mu.Lock()
+	s.secrets["fresh"] = &Secret{Name: "fresh", Value: "val-fresh", UpdatedAt: now}
+	s.secrets["old"] = &Secret{Name: "old", Value: "val-old", UpdatedAt: now.Add(-2 * time.Hour)}
+	s.secrets["mid_b"] = &Secret{Name: "mid_b", Value: "val-mid-b", UpdatedAt: now.Add(-1 * time.Hour)}
+	s.secrets["mid_a"] = &Secret{Name: "mid_a", Value: "val-mid-a", UpdatedAt: now.Add(-1 * time.Hour)}
+	s.mu.Unlock()
+
+	list, err := s.List()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list) != 4 {
+		t.Fatalf("expected 4 secrets, got %d", len(list))
+	}
+
+	expected := []string{"old", "mid_a", "mid_b", "fresh"}
+	for i, exp := range expected {
+		if list[i].Name != exp {
+			t.Fatalf("at index %d: expected %s, got %s", i, exp, list[i].Name)
+		}
+	}
+}
+
+func TestConfigListProjects_SortingFreshAtBottom(t *testing.T) {
+	cfg := &Config{
+		Projects: make(map[string]*Project),
+	}
+	now := time.Now()
+
+	cfg.Projects["p_fresh"] = &Project{ID: "3", Name: "Fresh Project", CreatedAt: now}
+	cfg.Projects["p_old"] = &Project{ID: "1", Name: "Old Project", CreatedAt: now.Add(-48 * time.Hour)}
+	cfg.Projects["p_mid"] = &Project{ID: "2", Name: "Mid Project", CreatedAt: now.Add(-24 * time.Hour)}
+
+	projects := cfg.ListProjects()
+	if len(projects) != 3 {
+		t.Fatalf("expected 3 projects, got %d", len(projects))
+	}
+
+	expectedIDs := []string{"1", "2", "3"}
+	for i, expID := range expectedIDs {
+		if projects[i].ID != expID {
+			t.Fatalf("at index %d: expected project ID %s, got %s", i, expID, projects[i].ID)
+		}
+	}
+}

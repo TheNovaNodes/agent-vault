@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -302,6 +303,12 @@ func (s *Store) List() ([]Secret, error) {
 			UpdatedAt: sec.UpdatedAt,
 		})
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].UpdatedAt.Equal(result[j].UpdatedAt) {
+			return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
+		}
+		return result[i].UpdatedAt.Before(result[j].UpdatedAt)
+	})
 	return result, nil
 }
 
@@ -462,6 +469,23 @@ func (c *Config) removeSecretFromProjects(name string) {
 		}
 		proj.SecretIDs = cleaned
 	}
+}
+
+// ListProjects возвращает список проектов, отсортированных по CreatedAt (хронологически, свежие внизу).
+func (c *Config) ListProjects() []*Project {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	projects := make([]*Project, 0, len(c.Projects))
+	for _, p := range c.Projects {
+		projects = append(projects, p)
+	}
+	sort.Slice(projects, func(i, j int) bool {
+		if projects[i].CreatedAt.Equal(projects[j].CreatedAt) {
+			return strings.ToLower(projects[i].Name) < strings.ToLower(projects[j].Name)
+		}
+		return projects[i].CreatedAt.Before(projects[j].CreatedAt)
+	})
+	return projects
 }
 
 // === CRYPTO ===
@@ -1039,13 +1063,7 @@ func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
-		s.config.mu.RLock()
-		projects := make([]*Project, 0, len(s.config.Projects))
-		for _, p := range s.config.Projects {
-			projects = append(projects, p)
-		}
-		s.config.mu.RUnlock()
-		jsonResponse(w, projects)
+		jsonResponse(w, s.config.ListProjects())
 
 	case http.MethodPost:
 		if !s.isAdmin(r) {
@@ -1927,12 +1945,7 @@ func (b *Bot) sendExport(chatID int64) {
 // === PROJECT BOT METHODS ===
 
 func (b *Bot) sendProjectList(chatID int64) {
-	b.config.mu.RLock()
-	projects := make([]*Project, 0, len(b.config.Projects))
-	for _, p := range b.config.Projects {
-		projects = append(projects, p)
-	}
-	b.config.mu.RUnlock()
+	projects := b.config.ListProjects()
 
 	if len(projects) == 0 {
 		sendWithMenu(b.api, chatID, "📭 Проектов нет\n\nСоздайте первый проект:", mainMenuKB())
