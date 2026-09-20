@@ -1110,3 +1110,57 @@ func TestBot_Message_HandleMessage(t *testing.T) {
 	}
 	bot.handleMessage(msg)
 }
+
+func TestCallback_NilMessageHandled(t *testing.T) {
+	store := MustNewStore("", "")
+	cfg := newTestConfig()
+	mockAPI := newMockBotAPI()
+	bot := NewBot(mockAPI, store, cfg, "/dev/null")
+
+	// Ensure no panic when Message is nil
+	cb := &tgbotapi.CallbackQuery{
+		ID:      "cb-nil-msg",
+		From:    &tgbotapi.User{ID: cfg.TGAdminID},
+		Message: nil,
+		Data:    "list",
+	}
+	bot.handleCallback(cb)
+}
+
+func TestCallback_ResetsSessionOnListAndProjects(t *testing.T) {
+	store := MustNewStore("", "")
+	cfg := newTestConfig()
+	bot, _ := newTestBot(store, cfg)
+	chatID := int64(100)
+
+	bot.getSession(chatID).state = stateWaitingName
+
+	bot.handleCallback(makeCallback(chatID, "list"))
+	if state := bot.getSession(chatID).state; state != "" {
+		t.Fatalf("expected state to be reset on list callback, got %q", state)
+	}
+
+	bot.getSession(chatID).state = stateWaitingName
+	bot.handleCallback(makeCallback(chatID, "projects"))
+	if state := bot.getSession(chatID).state; state != "" {
+		t.Fatalf("expected state to be reset on projects callback, got %q", state)
+	}
+}
+
+func TestSendExport_HTMLEscaping(t *testing.T) {
+	store := MustNewStore("", "")
+	cfg := newTestConfig()
+	bot, api := newTestBot(store, cfg)
+	chatID := int64(100)
+
+	store.Set("xml_secret", "<script>alert('xss')</script>&foo")
+	bot.sendExport(chatID)
+
+	last := api.LastMessage()
+	if strings.Contains(last.Text, "<script>") {
+		t.Fatalf("expected raw XML/HTML tags to be escaped in export, got: %s", last.Text)
+	}
+	if !strings.Contains(last.Text, "\\u003cscript\\u003e") {
+		t.Fatalf("expected escaped json in export, got: %s", last.Text)
+	}
+}
