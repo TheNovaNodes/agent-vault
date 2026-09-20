@@ -1,4 +1,4 @@
-.PHONY: all build test test-cov test-short test-race clean lint fmt run dev deploy init help
+.PHONY: all build test test-cov test-short test-race clean lint fmt run dev deploy help
 
 # === Variables ===
 BINARY=agent-vault
@@ -86,8 +86,3 @@ deploy: build ## Деплой на сервер
 	sudo systemctl start agent-vault
 	@echo "[deploy] checking status..."
 	@sudo systemctl status agent-vault --no-pager || true
-
-# === Init ===
-init: $(BINARY) ## Инициализация vault (создание snapshot.enc)
-	@echo "[init] Убедитесь что VAULT_PASSWORD установлен"
-	./$(BINARY) -init

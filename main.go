@@ -80,8 +80,9 @@ func (a *AuditLogger) Log(action AuditAction, target, actor, details string) {
 		Details:   details,
 	}
 	if len(a.entries) >= a.maxSize {
-		// Shift: remove oldest
-		a.entries = append(a.entries[1:], entry)
+		// Shift: remove oldest without reallocation
+		copy(a.entries, a.entries[1:])
+		a.entries[len(a.entries)-1] = entry
 	} else {
 		a.entries = append(a.entries, entry)
 	}
@@ -537,8 +538,8 @@ type ipRateLimiter struct {
 }
 
 type rateVisitor struct {
-	count    int
-	lastSeen time.Time
+	count       int
+	windowStart time.Time
 }
 
 func newIPRateLimiter(rate int, period time.Duration) *ipRateLimiter {
@@ -556,8 +557,9 @@ func newIPRateLimiter(rate int, period time.Duration) *ipRateLimiter {
 			select {
 			case <-ticker.C:
 				rl.mu.Lock()
+				now := time.Now()
 				for ip, v := range rl.visitors {
-					if time.Since(v.lastSeen) > period*2 {
+					if now.Sub(v.windowStart) > period*2 {
 						delete(rl.visitors, ip)
 					}
 				}
@@ -585,15 +587,19 @@ func (rl *ipRateLimiter) allow(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
+	now := time.Now()
 	v, ok := rl.visitors[ip]
-	if !ok || time.Since(v.lastSeen) > rl.period {
-		rl.visitors[ip] = &rateVisitor{count: 1, lastSeen: time.Now()}
+	if !ok || now.Sub(v.windowStart) > rl.period {
+		rl.visitors[ip] = &rateVisitor{count: 1, windowStart: now}
 		return true
 	}
 
+	if v.count >= rl.rate {
+		return false
+	}
+
 	v.count++
-	v.lastSeen = time.Now()
-	return v.count <= rl.rate
+	return true
 }
 
 type Server struct {
@@ -946,9 +952,18 @@ func (s *Server) handleAccess(w http.ResponseWriter, r *http.Request) {
 			s.config.AuditLog.Log(ActionTokenConsume, secretName, "api", "one-time")
 		}
 		secret, err := s.store.Get(secretName)
-		if err == ErrSecretNotFound {
-
-			http.Error(w, "secret not found", http.StatusNotFound)
+		if err != nil {
+			if errors.Is(err, ErrSecretNotFound) {
+				http.Error(w, "secret not found", http.StatusNotFound)
+				return
+			}
+			// Decryption failure: restore token so access is not permanently lost
+			s.config.mu.Lock()
+			s.config.SecretTokens[tokenHash] = st
+			_ = s.config.save(s.configPath)
+			s.config.mu.Unlock()
+			log.Printf("[api] decryption error for secret %s: %v", secretName, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 		jsonResponse(w, map[string]interface{}{
