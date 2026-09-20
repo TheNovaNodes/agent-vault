@@ -1333,3 +1333,87 @@ func TestServer_ExtraHandlers(t *testing.T) {
 	cfg.startCleanupWorker(time.Millisecond)
 	
 }
+
+func TestAuditLogger_RingBufferNoAllocShift(t *testing.T) {
+	logger := NewAuditLogger(3)
+	logger.Log(ActionSecretSet, "s1", "user", "")
+	logger.Log(ActionSecretSet, "s2", "user", "")
+	logger.Log(ActionSecretSet, "s3", "user", "")
+	logger.Log(ActionSecretSet, "s4", "user", "")
+
+	entries := logger.List()
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	if entries[0].Target != "s2" || entries[1].Target != "s3" || entries[2].Target != "s4" {
+		t.Fatalf("unexpected entries order after shift: %+v", entries)
+	}
+}
+
+func TestRateLimiter_LockoutDoesNotExtendWindow(t *testing.T) {
+	limiter := newIPRateLimiter(2, 50*time.Millisecond)
+	defer limiter.Stop()
+
+	ip := "192.0.2.1"
+	if !limiter.allow(ip) {
+		t.Fatal("first request should be allowed")
+	}
+	if !limiter.allow(ip) {
+		t.Fatal("second request should be allowed")
+	}
+	if limiter.allow(ip) {
+		t.Fatal("third request should be blocked")
+	}
+
+	// Repeated rejected requests during the window
+	if limiter.allow(ip) {
+		t.Fatal("fourth request should still be blocked")
+	}
+
+	// Wait for the period to expire
+	time.Sleep(60 * time.Millisecond)
+
+	// After period expires, request should be allowed even though rejected requests were sent
+	if !limiter.allow(ip) {
+		t.Fatal("request after period expired should be allowed (lockout must not extend window)")
+	}
+}
+
+func TestHandleAccess_DecryptionErrorRollsBackToken(t *testing.T) {
+	store := MustNewStore("good-password", "73616c74313233343536373839303132")
+	store.Set("sec1", "val1")
+
+	// Corrupt the secret value in store so decryption fails
+	store.mu.Lock()
+	store.secrets["sec1"].Value = "corrupted-value"
+	store.mu.Unlock()
+
+	srv, cfg := newTestServerForMain(store)
+	srv.configPath = filepath.Join(t.TempDir(), "config.yaml")
+	token := "one-time-token-123"
+	tokenHash := hashToken(token)
+
+	cfg.mu.Lock()
+	cfg.SecretTokens[tokenHash] = &SecretToken{
+		SecretName: "sec1",
+		Token:      tokenHash,
+	}
+	cfg.mu.Unlock()
+
+	req := httptest.NewRequest("GET", "/access", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+
+	srv.handleAccess(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 InternalServerError on decryption failure, got %d", w.Code)
+	}
+
+	cfg.mu.RLock()
+	st, ok := cfg.SecretTokens[tokenHash]
+	cfg.mu.RUnlock()
+	if !ok || st == nil {
+		t.Fatal("expected one-time token to be rolled back and restored on decryption failure")
+	}
+}
