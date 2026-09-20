@@ -88,3 +88,23 @@ func TestSealedStoreE2ERestart(t *testing.T) {
 		t.Fatalf("expected 'localhost', got '%s'", sec.Value)
 	}
 }
+
+func TestSnapshotFailClosedOnCorruptedData(t *testing.T) {
+	dir := t.TempDir()
+	snapshotPath := filepath.Join(dir, "snapshot.enc")
+
+	// Write invalid/corrupted snapshot
+	if err := os.WriteFile(snapshotPath, []byte("corrupted-snapshot-content-that-is-too-short"), 0600); err != nil {
+		t.Fatalf("write error: %v", err)
+	}
+
+	data, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		t.Fatalf("read error: %v", err)
+	}
+
+	_, decErr := decryptSnapshot(data, "correct-password")
+	if decErr == nil {
+		t.Fatal("expected decryptSnapshot to fail on corrupted data, but got nil error")
+	}
+}

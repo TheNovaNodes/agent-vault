@@ -2358,29 +2358,33 @@ func main() {
 	}
 	cfg.startCleanupWorker(time.Hour)
 
-	// Load secrets from encrypted snapshot if exists
+	// Load secrets from encrypted snapshot if exists (fail-closed)
 	if _, err := os.Stat(cfg.SnapshotPath); err == nil {
 		data, err := os.ReadFile(cfg.SnapshotPath)
-		if err == nil && len(data) > 0 {
-			vaultPassword := os.Getenv("VAULT_PASSWORD")
-			if vaultPassword != "" {
-				decrypted, decErr := decryptSnapshot(data, vaultPassword)
-				if decErr == nil {
-					var secrets map[string]*Secret
-					if json.Unmarshal(decrypted, &secrets) == nil {
-						store.mu.Lock()
-						for name, sec := range secrets {
-							store.secrets[name] = sec
-						}
-						store.mu.Unlock()
-					}
-				} else {
-					log.Printf("[main] snapshot decrypt failed (wrong password?): %v", decErr)
-				}
-			} else {
-				log.Printf("[main] VAULT_PASSWORD not set, skipping snapshot load")
-			}
+		if err != nil {
+			log.Fatalf("[main] failed to read snapshot: %v", err)
 		}
+		if len(data) > 0 {
+			vaultPassword := os.Getenv("VAULT_PASSWORD")
+			if vaultPassword == "" {
+				log.Fatal("[main] snapshot exists but VAULT_PASSWORD not set — aborting to protect secrets")
+			}
+			decrypted, decErr := decryptSnapshot(data, vaultPassword)
+			if decErr != nil {
+				log.Fatalf("[main] CRITICAL: snapshot decryption failed: %v — aborting to prevent overwrite", decErr)
+			}
+			var secrets map[string]*Secret
+			if err := json.Unmarshal(decrypted, &secrets); err != nil {
+				log.Fatalf("[main] CRITICAL: snapshot unmarshal failed: %v", err)
+			}
+			store.mu.Lock()
+			for name, sec := range secrets {
+				store.secrets[name] = sec
+			}
+			store.mu.Unlock()
+		}
+	} else if !os.IsNotExist(err) {
+		log.Fatalf("[main] failed to stat snapshot file: %v", err)
 	}
 
 	botAPI, err := tgbotapi.NewBotAPI(cfg.TGBotToken)
@@ -2411,22 +2415,32 @@ func main() {
 	bot.startSessionCleaner(ctx)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
+	var shutdownOnce sync.Once
+	doShutdown := func() {
+		shutdownOnce.Do(func() {
+			log.Print("[main] terminated — shutting down...")
+			cancel()
+			cfg.stopCleanupWorker()
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer shutdownCancel()
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				log.Printf("[main] shutdown error: %v", err)
+			}
+		})
+	}
+
 	go func() {
-		<-sigCh
-		log.Print("[main] terminated — shutting down...")
-		cancel()
-		cfg.stopCleanupWorker()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer shutdownCancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Printf("[main] shutdown error: %v", err)
+		select {
+		case <-sigCh:
+			doShutdown()
+		case <-ctx.Done():
 		}
 	}()
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[main] server error: %v", err)
-			cancel()
+			doShutdown()
 		}
 	}()
 
@@ -2443,7 +2457,14 @@ func main() {
 		if err := cfg.save(*configPath); err != nil {
 			log.Printf("[main] config save error: %v", err)
 		}
-		data, err := json.Marshal(store.secrets)
+		store.mu.RLock()
+		secretsCopy := make(map[string]*Secret, len(store.secrets))
+		for k, v := range store.secrets {
+			secretsCopy[k] = v
+		}
+		store.mu.RUnlock()
+
+		data, err := json.Marshal(secretsCopy)
 		if err != nil {
 			log.Printf("[main] snapshot marshal error: %v", err)
 			return
@@ -2453,8 +2474,14 @@ func main() {
 			log.Printf("[main] snapshot encrypt error: %v", err)
 			return
 		}
-		if err := os.WriteFile(cfg.SnapshotPath, encrypted, 0600); err != nil {
+		tmpPath := cfg.SnapshotPath + ".tmp"
+		if err := os.WriteFile(tmpPath, encrypted, 0600); err != nil {
 			log.Printf("[main] snapshot write error: %v", err)
+			return
+		}
+		if err := os.Rename(tmpPath, cfg.SnapshotPath); err != nil {
+			log.Printf("[main] snapshot atomic rename error: %v", err)
+			return
 		}
 		log.Print("[main] encrypted snapshot saved, bye")
 	}()
@@ -2475,6 +2502,7 @@ func main() {
 			}
 		case <-ctx.Done():
 			botAPI.StopReceivingUpdates()
+			doShutdown()
 			return
 		}
 	}
