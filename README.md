@@ -155,9 +155,24 @@ make test-cov
 
 ## Operations, logs, backup/restore, rollback
 - **Operations:** Run via systemd.
+- **Production Deployment (5-Echelon Automated Gate):**
+  Orchestrated via `./scripts/deploy.sh` (or compatibility entrypoint `./deploy.sh`):
+  ```bash
+  # Execute standard 5-echelon deployment
+  ./scripts/deploy.sh
+
+  # Dry-run validation (build and test without binary swap)
+  ./scripts/deploy.sh --dry-run
+  ```
+  **Deployment Echelons:**
+  1. **🛡️ Échelon 0: Pre-Flight Guard & Rollback Capsule:** Toolchain checks, resolves `TARGET_COMMIT`, and archives working binaries into `.deploy_rollback_capsule/`. Builds candidate binaries with `-ldflags`.
+  2. **🧱 Échelon 1: Production Isolation Probe:** Executes full test suite (`go test ./...`) and ensures git working tree cleanliness.
+  3. **🔄 Échelon 2: Atomic Switch & Graceful Shift:** Atomically installs candidate binaries into `bin/agent-vault`, `bin/agent-vault-cli`, etc. Restarts systemd service if active.
+  4. **🪞 Échelon 3: Identity & Truth Probe:** Queries `--version` to verify runtime commit SHA matches `git rev-parse HEAD`.
+  5. **🔍 Échelon 4: Deep Smoke Probe & Rollback Gate:** Probes API health endpoint or CLI subtools. Automatic instant rollback (`trap rollback ERR EXIT`) on any anomaly.
 - **Logs:** Application logs to stdout/stderr. Audit logs available via `/audit` API.
 - **Backup/Restore:** Back up `snapshot.enc` (and `config.yaml`). If sealed mode is used, ensure the `VAULT_PASSWORD` is securely backed up; otherwise, data cannot be decrypted.
-- **Rollback:** Replace `snapshot.enc` with a previous version and restart the service.
+- **Rollback:** Automatic rollback via capsule on deploy failure, or manually replace `snapshot.enc` with a previous version and restart the service.
 
 ## Generic MCP-client example
 An agent using an HTTP-based MCP client can fetch secrets using their provisioned token:
