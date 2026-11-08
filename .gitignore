@@ -1,4 +1,6 @@
 # === Binary build outputs ===
+bin/
+.deploy_rollback_capsule/
 /agent-vault
 /agent-vault-env
 /agent-vault-cli

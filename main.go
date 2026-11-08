@@ -29,6 +29,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var (
+	// Version is injected at build time via -ldflags
+	Version = "dev"
+	// CommitSHA is injected at build time via -ldflags
+	CommitSHA = "unknown"
+)
+
 // === AUDIT LOG ===
 
 type AuditAction string
@@ -2696,6 +2703,13 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 // === MAIN ===
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" || arg == "version" {
+			fmt.Printf("agent-vault version %s (commit: %s)\n", Version, CommitSHA)
+			return
+		}
+	}
+
 	configPath := flag.String("config", "config.yaml", "Path to config file")
 	devMode := flag.Bool("dev", false, "Run in development mode (allows non-TLS)")
 	flag.Parse()
